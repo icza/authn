@@ -28,8 +28,11 @@ import (
 )
 
 const (
-	// DefaultAuthDBName is the default for Config.AuthDBName.
-	DefaultAuthDBName = "auth"
+	// DefaultAuthnDBName is the default for Config.AuthnDBName.
+	DefaultAuthnDBName = "auth"
+
+	// DefaultTokensCollectionName is the default for Config.TokensCollectionName.
+	DefaultTokensCollectionName = "tokens"
 
 	// DefaultEntryCodeBytes is the default for Config.EntryCodeBytes.
 	DefaultEntryCodeBytes = 8
@@ -47,8 +50,12 @@ const (
 // Config holds Authenticator configuration.
 // A zero value is a valid configuration, see constants for default values.
 type Config struct {
-	// AuthDBName is the name of the database used by the Authenticator.
-	AuthDBName string
+	// AuthnDBName is the name of the database used by the Authenticator.
+	AuthnDBName string
+
+	// TokensCollectionName is the name of the database collection used by the
+	// Authenticator to store tokens.
+	TokensCollectionName string
 
 	// EntryCodeBytes tells how many bytes to use for entry codes.
 	// The actual entry code is a hex string, will be twice as many hex digits.
@@ -93,8 +100,11 @@ func NewAuthenticator(
 		panic("sendEmail must be provided")
 	}
 
-	if cfg.AuthDBName == "" {
-		cfg.AuthDBName = DefaultAuthDBName
+	if cfg.AuthnDBName == "" {
+		cfg.AuthnDBName = DefaultAuthnDBName
+	}
+	if cfg.TokensCollectionName == "" {
+		cfg.TokensCollectionName = DefaultTokensCollectionName
 	}
 	if cfg.EntryCodeBytes == 0 {
 		cfg.EntryCodeBytes = DefaultEntryCodeBytes
