@@ -22,6 +22,7 @@ mongo-go driver.
 package authn
 
 import (
+	"text/template"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -29,7 +30,7 @@ import (
 
 const (
 	// DefaultAuthnDBName is the default for Config.AuthnDBName.
-	DefaultAuthnDBName = "auth"
+	DefaultAuthnDBName = "authn"
 
 	// DefaultTokensCollectionName is the default for Config.TokensCollectionName.
 	DefaultTokensCollectionName = "tokens"
@@ -38,7 +39,7 @@ const (
 	DefaultEntryCodeBytes = 8
 
 	// DefaultEntryCodeExpiration is the default for Config.EntryCodeExpiration.
-	DefaultEntryCodeExpiration = 30 * time.Minute
+	DefaultEntryCodeExpiration = 20 * time.Minute
 
 	// DefaultTokenValueBytes is the default for Config.TokenValueBytes.
 	DefaultTokenValueBytes = 24
@@ -70,10 +71,14 @@ type Config struct {
 
 	// TokenExpiration tells how long a token remains valid.
 	TokenExpiration time.Duration
+
+	// EmailTemplate is the template text of the emails to be sent out
+	// with entry codes.
+	EmailTemplate string
 }
 
 // Authenticator is the implementation of a passwordless authenticator.
-// It's safe to use it concurrently from multiple goroutines.
+// It's safe for concurrent use by multiple goroutines.
 type Authenticator struct {
 	// mongoClient used for database operations.
 	mongoClient *mongo.Client
@@ -83,10 +88,13 @@ type Authenticator struct {
 
 	// cfg to use
 	cfg Config
+
+	emailTempl *template.Template
 }
 
 // NewAuthenticator creates a new Authenticator.
-// This function panics if mongoClient or sendEmail are nil.
+// This function panics if mongoClient or sendEmail are nil, or if
+// Config.EmailTemplate is provided but is invalid.
 func NewAuthenticator(
 	mongoClient *mongo.Client,
 	sendEmail func(to, from, subject, body string) error,
@@ -118,18 +126,26 @@ func NewAuthenticator(
 	if cfg.TokenExpiration == 0 {
 		cfg.TokenExpiration = DefaultTokenExpiration
 	}
+	if cfg.EmailTemplate == "" {
+		cfg.EmailTemplate = DefaultEmailTemplate
+	}
 
 	return &Authenticator{
 		mongoClient: mongoClient,
 		sendEmail:   sendEmail,
 		cfg:         cfg,
+		emailTempl:  template.Must(template.New("").Parse(cfg.EmailTemplate)),
 	}
 }
 
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
 // If client is provided, it will be saved as Token.EntryClient.
-func (a *Authenticator) SendEntryCode(email string, client *Client) (err error) {
+//
+// data is set as EmailParams.Data, and will be available in the email template.
+// When the default email template is used, as a minimum, it should contain
+// "Site" and "SenderName".
+func (a *Authenticator) SendEntryCode(email string, client *Client, data map[string]interface{}) (err error) {
 	// TODO
 	return nil
 }

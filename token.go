@@ -5,7 +5,7 @@ import "time"
 // Client holds some information about the client.
 type Client struct {
 	// User agent of the client.
-	UserAgent string `bson:"agent"`
+	UserAgent string `bson:"agent,omitempty"`
 
 	// IP address of the client.
 	IP string `bson:"ip"`
