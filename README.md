@@ -21,4 +21,4 @@ A user may have multiple valid tokens (multiple sessions).
 `Authenticator.Tokens()` may be used to query all valid sessions of a user.
 
 `Authenticator` uses MongoDB as the persistent store, accessed via the official
-https://github.com/mongodb/mongo-go-driver driver.
+[mongo-go](https://github.com/mongodb/mongo-go-driver) driver.
