@@ -93,8 +93,7 @@ type Authenticator struct {
 	c *mongo.Collection
 }
 
-// EmailSenderFunc is the type of the function that must be provided which
-// sends out an email.
+// EmailSenderFunc is the type of the function used to send out emails.
 type EmailSenderFunc func(ctx context.Context, to, body string) error
 
 // NewAuthenticator creates a new Authenticator.
@@ -242,7 +241,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 
 // VerifyEntryCode verifies the given entry code.
 // If the code is invalid, token will be nil.
-// Should be called to verify users email upon login.
+// Should be called to verify user's email upon login.
 // If client is provided, it will be saved as Token.EntryClient.
 func (a *Authenticator) VerifyEntryCode(code string, client *Client) (token *Token, err error) {
 	// TODO
