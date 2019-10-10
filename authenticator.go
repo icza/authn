@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/mail"
 	"strings"
 	"text/template"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
@@ -129,11 +132,37 @@ func NewAuthenticator(
 		cfg.EmailTemplate = DefaultEmailTemplate
 	}
 
-	return &Authenticator{
+	a := &Authenticator{
 		mongoClient: mongoClient,
 		sendEmail:   sendEmail,
 		cfg:         cfg,
 		emailTempl:  template.Must(template.New("").Parse(cfg.EmailTemplate)),
+	}
+
+	a.initDB()
+
+	return a
+}
+
+// initDB initializes the authn database. This includes:
+//   - ensure required indices exist
+func (a *Authenticator) initDB() {
+	_, err := a.c().Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "ecode", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{
+				{Key: "value", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to create authn db indices: %v", err)
 	}
 }
 
