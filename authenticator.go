@@ -189,29 +189,13 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	}
 	entryCode := hex.EncodeToString(codeData)
 
-	emailParams := &EmailParams{
-		Email:               addr.Address,
-		SiteName:            a.cfg.SiteName,
-		EntryCode:           entryCode,
-		EntryCodeExpiration: a.cfg.EntryCodeExpiration,
-		Data:                data,
-		SenderName:          a.cfg.SenderName,
-	}
-
-	body := &strings.Builder{}
-	if err := a.emailTempl.Execute(body, emailParams); err != nil {
-		return fmt.Errorf("failed to execute email template: %w", err)
-	}
-
-	if err := a.sendEmail(ctx, addr.Address, body.String()); err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
+	// Entry code must be unique. Check it by inserting first to avoid
+	// emailing out someone else's entry code.
 
 	now := time.Now()
 	if client != nil {
 		client.At = now
 	}
-
 	token := &Token{
 		Email:        addr.Address,
 		LoweredEmail: strings.ToLower(addr.Address),
@@ -221,9 +205,36 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		Expiration:   now.Add(a.cfg.EntryCodeExpiration),
 	}
 
-	// All good, save token
 	if _, err := a.c.InsertOne(ctx, token); err != nil {
 		return fmt.Errorf("failed to insert token: %w", err)
+	}
+
+	// Now try to send email...
+	// But if error occurs further down the road, remove the inserted token.
+	defer func() {
+		if err != nil {
+			// Remove inserted token:
+			if _, err2 := a.c.DeleteOne(ctx, bson.M{"ecode": entryCode}); err2 != nil {
+				// TODO we can't do anything about it.
+			}
+		}
+	}()
+
+	emailParams := &EmailParams{
+		Email:               addr.Address,
+		SiteName:            a.cfg.SiteName,
+		EntryCode:           entryCode,
+		EntryCodeExpiration: a.cfg.EntryCodeExpiration,
+		Data:                data,
+		SenderName:          a.cfg.SenderName,
+	}
+	body := &strings.Builder{}
+	if err := a.emailTempl.Execute(body, emailParams); err != nil {
+		return fmt.Errorf("failed to execute email template: %w", err)
+	}
+
+	if err := a.sendEmail(ctx, addr.Address, body.String()); err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
 	}
 
 	return nil

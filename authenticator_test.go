@@ -124,14 +124,6 @@ func TestSendEntryCode(t *testing.T) {
 			expErr:       true,
 		},
 		{
-			title: "insertFail error",
-			email: "as@as.hu",
-			cfg: Config{
-				AuthnDBName: "/\\. \"$\x00", // Invalid dbname (invalid chars) so insert will fail
-			},
-			expErr: true,
-		},
-		{
 			title:  "success",
 			email:  "As@as.hu",
 			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
@@ -157,19 +149,25 @@ func TestSendEntryCode(t *testing.T) {
 		}
 		a := NewAuthenticator(client, sendEmail, c.cfg)
 
-		if c.cfg.AuthnDBName == "" {
-			// Clear tokens
-			if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-				t.Errorf("Failed to clear tokens: %v", err)
-			}
+		// Clear tokens
+		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+			t.Errorf("Failed to clear tokens: %v", err)
 		}
 
 		err := a.SendEntryCode(ctx, c.email, c.client, c.data)
 		if gotErr := err != nil; gotErr != c.expErr {
 			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
 		}
-
-		if err == nil {
+		if err != nil {
+			// If an error is returned, we expect no "left-over" tokens:
+			if n, err := a.c.CountDocuments(ctx, bson.M{}); err != nil {
+				t.Errorf("Failed to count tokens: %v", err)
+			} else {
+				if n > 0 {
+					t.Errorf("[%s] Expected no left-over tokens, got: %d", c.title, n)
+				}
+			}
+		} else {
 			// Verify token:
 			var token *Token
 			if err := a.c.FindOne(ctx, bson.M{}).Decode(&token); err != nil {
