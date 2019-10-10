@@ -4,6 +4,9 @@ go:
   - 1.13
   - master
 
+services:
+  - mongodb
+
 script:
   - go test -race -coverprofile=coverage.txt -covermode=atomic
 
