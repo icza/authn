@@ -3,6 +3,7 @@ package authn
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -63,5 +64,21 @@ func TestNewAuthenticator(t *testing.T) {
 	}
 	if a.emailTempl == nil {
 		t.Errorf("Expected non-nil: %#v", a.emailTempl)
+	}
+
+	// Test custom config
+	cfg := Config{
+		AuthnDBName:          "adbname",
+		TokensCollectionName: "tcname",
+		EntryCodeBytes:       100,
+		EntryCodeExpiration:  time.Minute,
+		TokenValueBytes:      101,
+		TokenExpiration:      time.Hour,
+		EmailTemplate:        "etempl",
+	}
+
+	a = NewAuthenticator(client, sendEmail, cfg)
+	if a.cfg != cfg {
+		t.Errorf("Expected %#v, got: %#v", cfg, a.cfg)
 	}
 }
