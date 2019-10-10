@@ -88,6 +88,9 @@ type Authenticator struct {
 
 	// emailTempl generates the email body for sending out entry codes.
 	emailTempl *template.Template
+
+	// c is the token collection
+	c *mongo.Collection
 }
 
 // EmailSenderFunc is the type of the function that must be provided which
@@ -137,6 +140,7 @@ func NewAuthenticator(
 		sendEmail:   sendEmail,
 		cfg:         cfg,
 		emailTempl:  template.Must(template.New("").Parse(cfg.EmailTemplate)),
+		c:           mongoClient.Database(cfg.AuthnDBName).Collection(cfg.TokensCollectionName),
 	}
 
 	a.initDB()
@@ -147,7 +151,7 @@ func NewAuthenticator(
 // initDB initializes the authn database. This includes:
 //   - ensure required indices exist
 func (a *Authenticator) initDB() {
-	_, err := a.c().Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := a.c.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
 		{
 			Keys: bson.D{
 				{Key: "ecode", Value: 1},
@@ -164,11 +168,6 @@ func (a *Authenticator) initDB() {
 	if err != nil {
 		log.Printf("Failed to create authn db indices: %v", err)
 	}
-}
-
-// c is a helper method to get the tokens MongoDB collection.
-func (a *Authenticator) c() *mongo.Collection {
-	return a.mongoClient.Database(a.cfg.AuthnDBName).Collection(a.cfg.TokensCollectionName)
 }
 
 // SendEntryCode sends a one-time entry code to the given email address.
@@ -223,7 +222,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	}
 
 	// All good, save token
-	if _, err := a.c().InsertOne(ctx, token); err != nil {
+	if _, err := a.c.InsertOne(ctx, token); err != nil {
 		return fmt.Errorf("failed to insert token: %w", err)
 	}
 

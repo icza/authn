@@ -154,7 +154,7 @@ func TestSendEntryCode(t *testing.T) {
 
 		if c.cfg.AuthnDBName == "" {
 			// Clear tokens
-			if _, err := a.c().DeleteMany(ctx, bson.M{}); err != nil {
+			if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
 				t.Errorf("Failed to clear tokens: %v", err)
 			}
 		}
@@ -167,7 +167,7 @@ func TestSendEntryCode(t *testing.T) {
 		if err == nil {
 			// Verify token:
 			var token *Token
-			if err := a.c().FindOne(ctx, bson.M{}).Decode(&token); err != nil {
+			if err := a.c.FindOne(ctx, bson.M{}).Decode(&token); err != nil {
 				t.Errorf("[%s] Can't find token: %v", c.title, err)
 			}
 			expToken := new(Token)
