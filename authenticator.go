@@ -137,6 +137,11 @@ func NewAuthenticator(
 	}
 }
 
+// c is a helper method to get the tokens MongoDB collection.
+func (a *Authenticator) c() *mongo.Collection {
+	return a.mongoClient.Database(a.cfg.AuthnDBName).Collection(a.cfg.TokensCollectionName)
+}
+
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
 // If client is provided, it will be saved as Token.EntryClient.
@@ -174,18 +179,22 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
+	now := time.Now()
+	if client != nil {
+		client.At = now
+	}
+
 	token := &Token{
 		Email:        addr.Address,
 		LoweredEmail: strings.ToLower(addr.Address),
-		Created:      time.Now(),
+		Created:      now,
 		EntryCode:    entryCode,
 		EntryClient:  client,
-		Expiration:   time.Now().Add(a.cfg.EntryCodeExpiration),
+		Expiration:   now.Add(a.cfg.EntryCodeExpiration),
 	}
 
 	// All good, save token
-	c := a.mongoClient.Database(a.cfg.AuthnDBName).Collection(a.cfg.TokensCollectionName)
-	if _, err := c.InsertOne(ctx, token); err != nil {
+	if _, err := a.c().InsertOne(ctx, token); err != nil {
 		return fmt.Errorf("failed to insert token: %w", err)
 	}
 

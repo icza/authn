@@ -2,9 +2,12 @@ package authn
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -81,4 +84,97 @@ func TestNewAuthenticator(t *testing.T) {
 	if a.cfg != cfg {
 		t.Errorf("Expected %#v, got: %#v", cfg, a.cfg)
 	}
+}
+
+func TestSendEntryCode(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		title        string
+		email        string
+		cfg          Config
+		sendEmailErr error
+		client       *Client
+		expErr       bool
+	}{
+		{
+			title:  "invalid email",
+			email:  "invalid",
+			expErr: true,
+		},
+		{
+			title: "template exec error",
+			email: "as@as.hu",
+			cfg: Config{
+				EmailTemplate: "{{.Invalid}}",
+			},
+			expErr: true,
+		},
+		{
+			title:        "sendEmail error",
+			email:        "as@as.hu",
+			sendEmailErr: errors.New("test error"),
+			expErr:       true,
+		},
+		{
+			title: "insertFail error",
+			email: "as@as.hu",
+			cfg: Config{
+				AuthnDBName: "/\\. \"$\x00", // Invalid dbname (invalid chars) so insert will fail
+			},
+			expErr: true,
+		},
+		{
+			title:  "success",
+			email:  "As@as.hu",
+			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
+		},
+	}
+
+	for _, c := range cases {
+		sendEmail := func(ctx context.Context, to, body string) error { return c.sendEmailErr }
+		a := NewAuthenticator(client, sendEmail, c.cfg)
+
+		if c.cfg.AuthnDBName == "" {
+			// Clear tokens
+			if _, err := a.c().DeleteMany(ctx, bson.M{}); err != nil {
+				t.Errorf("Failed to clear tokens: %v", err)
+			}
+		}
+
+		err := a.SendEntryCode(ctx, c.email, c.client, nil)
+		if gotErr := err != nil; gotErr != c.expErr {
+			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
+		}
+
+		if err == nil {
+			// Verify token:
+			var token *Token
+			if err := a.c().FindOne(ctx, bson.M{}).Decode(&token); err != nil {
+				t.Errorf("[%s] Can't find token: %v", c.title, err)
+			}
+			expToken := new(Token)
+			*expToken = *token
+			expToken.Email = c.email
+			expToken.LoweredEmail = strings.ToLower(c.email)
+			expToken.Client = nil
+			expToken.EntryClient.At = c.client.At
+			expToken.Value = ""
+			now := time.Now()
+			if *token != *expToken || *token.EntryClient != *c.client ||
+				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) ||
+				diffTime(now, token.Created) ||
+				diffTime(now, token.EntryClient.At) {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, expToken, token)
+			}
+		}
+	}
+}
+
+// diffTime tells if 2 time instances are different from each other
+// in the meaning that their difference is bigger than 1 second.
+func diffTime(t1, t2 time.Time) bool {
+	const maxDelta = time.Second
+	delta := t1.Sub(t2)
+	return delta > maxDelta || delta < -maxDelta
 }
