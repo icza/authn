@@ -178,10 +178,11 @@ func TestSendEntryCode(t *testing.T) {
 			expToken.EntryClient.At = c.client.At
 			expToken.Value = ""
 			now := time.Now()
-			if *token != *expToken || *token.EntryClient != *c.client ||
-				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) ||
-				diffTime(now, token.Created) ||
-				diffTime(now, token.EntryClient.At) {
+			if *token != *expToken || *token.EntryClient != *c.client || // Explicit set fields above must match
+				len(token.EntryCode) != a.cfg.EntryCodeBytes*2 || // Entry code must be of specific length
+				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) || // Expiration must be set
+				diffTime(now, token.Created) || // Created must be set
+				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, expToken, token)
 			}
 		}
