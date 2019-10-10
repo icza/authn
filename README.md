@@ -3,6 +3,7 @@
 [![Build Status](https://travis-ci.org/icza/authn.svg?branch=master)](https://travis-ci.org/icza/authn)
 [![GoDoc](https://godoc.org/github.com/icza/authn?status.svg)](https://godoc.org/github.com/icza/authn)
 [![Go Report Card](https://goreportcard.com/badge/github.com/icza/authn)](https://goreportcard.com/report/github.com/icza/authn)
+[![codecov](https://codecov.io/gh/icza/authn/branch/master/graph/badge.svg)](https://codecov.io/gh/icza/authn)
 
 Passwordless, email based authentication with MongoDB store.
 
