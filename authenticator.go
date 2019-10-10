@@ -1,6 +1,12 @@
 package authn
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"net/mail"
+	"strings"
 	"text/template"
 	"time"
 
@@ -54,6 +60,14 @@ type Config struct {
 	// EmailTemplate is the template text of the emails to be sent out
 	// with entry codes.
 	EmailTemplate string
+
+	// SiteName is used in the entry code emails.
+	// Has no default, should be provided if the default email template is used.
+	SiteName string
+
+	// SenderName is used in the entry code emails.
+	// Has no default, should be provided if the default email template is used.
+	SenderName string
 }
 
 // Authenticator is the implementation of a passwordless authenticator.
@@ -63,20 +77,26 @@ type Authenticator struct {
 	mongoClient *mongo.Client
 
 	// sendEmail is a function to send emails.
-	sendEmail func(to, from, subject, body string) error
+	// It's on the implementation to use a proper "Subject" and appropriate "From" field.
+	sendEmail EmailSenderFunc
 
-	// cfg to use
+	// cfg to use.
 	cfg Config
 
+	// emailTempl generates the email body for sending out entry codes.
 	emailTempl *template.Template
 }
+
+// EmailSenderFunc is the type of the function that must be provided which
+// sends out an email.
+type EmailSenderFunc func(ctx context.Context, to, body string) error
 
 // NewAuthenticator creates a new Authenticator.
 // This function panics if mongoClient or sendEmail are nil, or if
 // Config.EmailTemplate is provided but is invalid.
 func NewAuthenticator(
 	mongoClient *mongo.Client,
-	sendEmail func(to, from, subject, body string) error,
+	sendEmail EmailSenderFunc,
 	cfg Config,
 ) *Authenticator {
 
@@ -122,10 +142,53 @@ func NewAuthenticator(
 // If client is provided, it will be saved as Token.EntryClient.
 //
 // data is set as EmailParams.Data, and will be available in the email template.
-// When the default email template is used, as a minimum, it should contain
-// "Site" and "SenderName".
-func (a *Authenticator) SendEntryCode(email string, client *Client, data map[string]interface{}) (err error) {
-	// TODO
+// The default email template does not use it, so it may be nil if you use the
+// default email template.
+func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]interface{}) (err error) {
+	addr, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email: %w", err)
+	}
+
+	codeData := make([]byte, a.cfg.EntryCodeBytes)
+	if _, err := rand.Read(codeData); err != nil {
+		return fmt.Errorf("failed to read random data: %w", err)
+	}
+	entryCode := hex.EncodeToString(codeData)
+
+	emailParams := &EmailParams{
+		Email:               addr.Address,
+		SiteName:            a.cfg.SiteName,
+		EntryCode:           entryCode,
+		EntryCodeExpiration: a.cfg.EntryCodeExpiration,
+		Data:                data,
+		SenderName:          a.cfg.SenderName,
+	}
+
+	body := &strings.Builder{}
+	if err := a.emailTempl.Execute(body, emailParams); err != nil {
+		return fmt.Errorf("failed to execute email template: %w", err)
+	}
+
+	if err := a.sendEmail(ctx, addr.Address, body.String()); err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+
+	token := &Token{
+		Email:        addr.Address,
+		LoweredEmail: strings.ToLower(addr.Address),
+		Created:      time.Now(),
+		EntryCode:    entryCode,
+		EntryClient:  client,
+		Expiration:   time.Now().Add(a.cfg.EntryCodeExpiration),
+	}
+
+	// All good, save token
+	c := a.mongoClient.Database(a.cfg.AuthnDBName).Collection(a.cfg.TokensCollectionName)
+	if _, err := c.InsertOne(ctx, token); err != nil {
+		return fmt.Errorf("failed to insert token: %w", err)
+	}
+
 	return nil
 }
 
