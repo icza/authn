@@ -95,6 +95,8 @@ func TestSendEntryCode(t *testing.T) {
 		cfg          Config
 		sendEmailErr error
 		client       *Client
+		data         map[string]interface{}
+		expBody      string
 		expErr       bool
 	}{
 		{
@@ -129,10 +131,25 @@ func TestSendEntryCode(t *testing.T) {
 			email:  "As@as.hu",
 			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
 		},
+		{
+			title:  "success-custom-data",
+			email:  "As@as.hu",
+			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
+			cfg: Config{
+				EmailTemplate: "{{.Data.Seven}}",
+			},
+			data:    map[string]interface{}{"Seven": 7},
+			expBody: "7",
+		},
 	}
 
 	for _, c := range cases {
-		sendEmail := func(ctx context.Context, to, body string) error { return c.sendEmailErr }
+		sendEmail := func(ctx context.Context, to, body string) error {
+			if c.expBody != "" && c.expBody != body {
+				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.expBody, body)
+			}
+			return c.sendEmailErr
+		}
 		a := NewAuthenticator(client, sendEmail, c.cfg)
 
 		if c.cfg.AuthnDBName == "" {
@@ -142,7 +159,7 @@ func TestSendEntryCode(t *testing.T) {
 			}
 		}
 
-		err := a.SendEntryCode(ctx, c.email, c.client, nil)
+		err := a.SendEntryCode(ctx, c.email, c.client, c.data)
 		if gotErr := err != nil; gotErr != c.expErr {
 			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
 		}
