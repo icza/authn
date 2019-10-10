@@ -3,6 +3,7 @@ package authn
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func TestNewAuthenticator(t *testing.T) {
 
 	// Test custom config
 	cfg := Config{
-		AuthnDBName:          "adbname",
+		AuthnDBName:          fmt.Sprint("tdb", time.Now().UnixNano()), // random name
 		TokensCollectionName: "tcname",
 		EntryCodeBytes:       100,
 		EntryCodeExpiration:  time.Minute,
@@ -83,6 +84,10 @@ func TestNewAuthenticator(t *testing.T) {
 	a = NewAuthenticator(client, sendEmail, cfg)
 	if a.cfg != cfg {
 		t.Errorf("Expected %#v, got: %#v", cfg, a.cfg)
+	}
+	// clear temp db
+	if err := client.Database(cfg.AuthnDBName).Drop(context.Background()); err != nil {
+		t.Errorf("Failed to clear temp db: %v", err)
 	}
 }
 
