@@ -177,7 +177,7 @@ func TestSendEntryCode(t *testing.T) {
 			*expToken = *token
 			expToken.Email = c.email
 			expToken.LoweredEmail = strings.ToLower(c.email)
-			expToken.Client = nil
+			expToken.Client = nil // Token.Client must not change
 			expToken.EntryClient.At = c.client.At
 			now := time.Now()
 			if *token != *expToken || *token.EntryClient != *c.client || // Explicit set fields above must match
@@ -186,9 +186,112 @@ func TestSendEntryCode(t *testing.T) {
 				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) || // Expiration must be set
 				diffTime(now, token.Created) || // Created must be set
 				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set
-				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, expToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
 			}
 		}
+	}
+}
+
+func TestVerifyEntryCode(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		title      string
+		savedToken *Token
+		entryCode  string
+		client     *Client
+		expErr     error
+	}{
+		{
+			title:     "unknown entry code error",
+			entryCode: "unknown",
+			expErr:    ErrUnknown,
+		},
+		{
+			title:      "already verified error",
+			entryCode:  "ec1",
+			savedToken: &Token{EntryCode: "ec1", EntryCodeVerified: true},
+			expErr:     ErrEntryCodeAlreadyVerified,
+		},
+		{
+			title:      "expired error",
+			entryCode:  "ec1",
+			savedToken: &Token{EntryCode: "ec1", Expiration: time.Now().Add(-time.Second)},
+			expErr:     ErrExpired,
+		},
+		{
+			title:     "success",
+			entryCode: "ec1",
+			savedToken: &Token{
+				EntryCode:   "ec1",
+				Expiration:  time.Now().Add(time.Hour),
+				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+		},
+		{
+			title:     "success-nil-client",
+			entryCode: "ec1",
+			savedToken: &Token{
+				EntryCode:   "ec1",
+				Expiration:  time.Now().Add(time.Hour),
+				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+		},
+		{
+			title:     "success-nil-client-no-saved-client",
+			entryCode: "ec1",
+			savedToken: &Token{
+				EntryCode:  "ec1",
+				Expiration: time.Now().Add(time.Hour),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		sendEmail := func(ctx context.Context, to, body string) error { return nil }
+		a := NewAuthenticator(client, sendEmail, Config{})
+
+		// Clear tokens
+		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+			t.Errorf("Failed to clear tokens: %v", err)
+		}
+		if c.savedToken != nil {
+			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
+				t.Errorf("Failed to insert token: %v", err)
+			}
+		}
+
+		token, err := a.VerifyEntryCode(ctx, c.entryCode, c.client)
+		if c.expErr != nil {
+			if err != c.expErr {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
+			}
+		} else {
+			// Verify token:
+			expToken := new(Token)
+			*expToken = *token
+			expToken.EntryCodeVerified = true
+			expToken.Client = nil // Token.Client must not change
+			if c.client == nil {
+				// If no client is provided, the saved one should be kept.
+				if c.savedToken.EntryClient != nil {
+					c.client = c.savedToken.EntryClient
+				} else {
+					// And if no saved client, a new one will be created
+					c.client = &Client{}
+				}
+			}
+			now := time.Now()
+			if *token != *expToken ||
+				token.EntryClient.UserAgent != c.client.UserAgent || // EntryClient.UserAgent must be updated
+				token.EntryClient.IP != c.client.IP || // EntryClient.IP must be updated
+				diffTime(now.Add(a.cfg.TokenExpiration), token.Expiration) || // Expiration must be updated
+				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
+			}
+		}
+
 	}
 }
 
