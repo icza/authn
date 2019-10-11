@@ -30,7 +30,10 @@ type Token struct {
 	EntryCode string `bson:"ecode"`
 
 	// EntryClient is the client information of the entry code verification.
-	EntryClient *Client `bson:"eclient,omitempty"`
+	EntryClient *Client `bson:"eclient"`
+
+	// EntryCodeVerified tells if this entry code has been verified.
+	EntryCodeVerified bool `bson:"ecodeVerified"`
 
 	// Client information of the last access.
 	Client *Client `bson:"client,omitempty"`
@@ -42,7 +45,7 @@ type Token struct {
 	Value string `bson:"value"`
 }
 
-// Valid tells if this token is valid.
-func (t *Token) Valid() bool {
+// Expired tells if this token has expired.
+func (t *Token) Expired() bool {
 	return t.Expiration.After(time.Now())
 }

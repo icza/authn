@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/mail"
@@ -197,10 +198,11 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	// Entry code and token must be unique. Check it by inserting first to avoid
 	// emailing out someone else's entry code or token.
 
-	now := time.Now()
-	if client != nil {
-		client.At = now
+	if client == nil {
+		client = &Client{}
 	}
+	now := time.Now()
+	client.At = now
 	token := &Token{
 		Email:        addr.Address,
 		LoweredEmail: strings.ToLower(addr.Address),
@@ -221,7 +223,8 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		if err != nil {
 			// Remove inserted token:
 			if _, err2 := a.c.DeleteOne(ctx, bson.M{"ecode": token.EntryCode}); err2 != nil {
-				// TODO we can't do anything about it.
+				// We can't do anything about it.
+				log.Printf("Can't remove token with entry code %q: %v", token.EntryCode, err2)
 			}
 		}
 	}()
@@ -246,26 +249,94 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	return nil
 }
 
+var (
+	// ErrEntryCodeAlreadyVerified indicates an attempt to verify an already
+	// verified entry code.
+	ErrEntryCodeAlreadyVerified = errors.New("entry code already verified")
+
+	// ErrUnknown indicates that the entry code or token value is unknown.
+	ErrUnknown = errors.New("unknown")
+
+	// ErrExpired indicates that the entry code or token has expired.
+	ErrExpired = errors.New("expired")
+)
+
 // VerifyEntryCode verifies the given entry code.
-// If the code is invalid, token will be nil.
 // Should be called to verify user's email upon login.
 // If client is provided, it will be saved as Token.EntryClient.
-func (a *Authenticator) VerifyEntryCode(code string, client *Client) (token *Token, err error) {
-	// TODO
+//
+// If the entry code is unknown, ErrUnknown is returned.
+// If the entry code has expired, ErrExpired is returned.
+//
+// An entry code can only be verified once. If the entry code is known
+// but has been verified before, ErrEntryCodeAlreadyVerified is returned.
+func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client) (token *Token, err error) {
+	if err = a.c.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, ErrUnknown
+		}
+		return nil, fmt.Errorf("failed to load token: %w", err)
+	}
+	if token.EntryCodeVerified {
+		return nil, ErrEntryCodeAlreadyVerified
+	}
+	if !token.Expired() {
+		return nil, ErrExpired
+	}
+
+	// Fill new state into token (only returned if update succeeds):
+	token.EntryCodeVerified = true
+	if client != nil {
+		token.EntryClient = client
+	} else {
+		if token.EntryClient == nil {
+			token.EntryClient = &Client{}
+		}
+	}
+	now := time.Now()
+	token.EntryClient.At = now
+	token.Expiration = now.Add(a.cfg.TokenExpiration)
+
+	// Use 2-phase update:
+	var updateResult *mongo.UpdateResult
+	updateResult, err = a.c.UpdateOne(ctx,
+		bson.M{
+			"ecode":         code,
+			"ecodeVerified": false,
+		},
+		bson.M{
+			"$set": bson.M{
+				"ecodeVerified": true,
+				"eclient":       token.EntryClient,
+				"exp":           token.Expiration,
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update token: %w", err)
+	}
+	if updateResult.ModifiedCount == 0 {
+		// We end up here if the entry code was concurrently verified.
+		return nil, ErrEntryCodeAlreadyVerified
+	}
+
+	// All good:
 	return
 }
 
 // VerifyToken verifies the given token value.
-// If the token value is invalid, token will be nil.
 // Should be called to verify the authenticity of a logged in user.
 // If client is provided, it will be saved as Token.Client.
+//
+// If the token value is unknown, ErrUnknown is returned.
+// If the token has expired, ErrExpired is returned.
 func (a *Authenticator) VerifyToken(tokenValue string, client *Client) (token *Token, err error) {
 	// TODO
 	return
 }
 
 // InvalidateToken invalidates the given token.
-// If the token value is invalid or the token is already invalidated, this method is a no-op.
+// If the token value is unknown or the token is already invalidated, this method is a no-op.
 // Should be called when a user wants to log out (only the given session).
 func (a *Authenticator) InvalidateToken(tokenValue string) (err error) {
 	// TODO
