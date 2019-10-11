@@ -179,10 +179,10 @@ func TestSendEntryCode(t *testing.T) {
 			expToken.LoweredEmail = strings.ToLower(c.email)
 			expToken.Client = nil
 			expToken.EntryClient.At = c.client.At
-			expToken.Value = ""
 			now := time.Now()
 			if *token != *expToken || *token.EntryClient != *c.client || // Explicit set fields above must match
 				len(token.EntryCode) != a.cfg.EntryCodeBytes*2 || // Entry code must be of specific length
+				len(token.Value) < a.cfg.TokenValueBytes*4/3 || // Token be of specific length (base64)
 				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) || // Expiration must be set
 				diffTime(now, token.Created) || // Created must be set
 				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set

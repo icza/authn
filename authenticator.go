@@ -3,6 +3,7 @@ package authn
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -186,10 +187,15 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	if _, err := rand.Read(codeData); err != nil {
 		return fmt.Errorf("failed to read random data: %w", err)
 	}
-	entryCode := hex.EncodeToString(codeData)
+	// Technically value is not yet required at this phase, but it's unique in DB
+	// so we must generate it too (else insertion would fail).
+	valueData := make([]byte, a.cfg.TokenValueBytes)
+	if _, err := rand.Read(valueData); err != nil {
+		return fmt.Errorf("failed to read random data: %w", err)
+	}
 
-	// Entry code must be unique. Check it by inserting first to avoid
-	// emailing out someone else's entry code.
+	// Entry code and token must be unique. Check it by inserting first to avoid
+	// emailing out someone else's entry code or token.
 
 	now := time.Now()
 	if client != nil {
@@ -199,9 +205,10 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		Email:        addr.Address,
 		LoweredEmail: strings.ToLower(addr.Address),
 		Created:      now,
-		EntryCode:    entryCode,
+		EntryCode:    hex.EncodeToString(codeData),
 		EntryClient:  client,
 		Expiration:   now.Add(a.cfg.EntryCodeExpiration),
+		Value:        base64.RawURLEncoding.EncodeToString(valueData),
 	}
 
 	if _, err := a.c.InsertOne(ctx, token); err != nil {
@@ -213,7 +220,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	defer func() {
 		if err != nil {
 			// Remove inserted token:
-			if _, err2 := a.c.DeleteOne(ctx, bson.M{"ecode": entryCode}); err2 != nil {
+			if _, err2 := a.c.DeleteOne(ctx, bson.M{"ecode": token.EntryCode}); err2 != nil {
 				// TODO we can't do anything about it.
 			}
 		}
@@ -222,7 +229,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	emailParams := &EmailParams{
 		Email:               addr.Address,
 		SiteName:            a.cfg.SiteName,
-		EntryCode:           entryCode,
+		EntryCode:           token.EntryCode,
 		EntryCodeExpiration: a.cfg.EntryCodeExpiration,
 		Data:                data,
 		SenderName:          a.cfg.SenderName,

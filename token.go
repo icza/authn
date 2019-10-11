@@ -39,7 +39,7 @@ type Token struct {
 	Expiration time.Time `bson:"exp"`
 
 	// Reusable token value for authentication.
-	Value string `bson:"value,omitempty"`
+	Value string `bson:"value"`
 }
 
 // Valid tells if this token is valid.
