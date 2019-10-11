@@ -7,6 +7,8 @@
 
 Passwordless, email based authentication with MongoDB store.
 
+STATUS: Incomplete, under development.
+
 The flow is the following:
 
   1. A user wants to login. He/she provides his/her email.
