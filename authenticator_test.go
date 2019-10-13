@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -496,6 +497,87 @@ func TestInvalidateToken(t *testing.T) {
 			}
 			if !loadedToken.Expired() {
 				t.Errorf("[%s]\nExpected expired", c.title)
+			}
+		}
+	}
+}
+
+func TestTokens(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		title          string
+		savedTokens    []*Token
+		tokenValue     string
+		expErr         error
+		expTokenValues []string
+	}{
+		{
+			title:      "unknown token value error",
+			tokenValue: "unknown",
+			expErr:     ErrUnknown,
+		},
+		{
+			title:      "expired error",
+			tokenValue: "t1",
+			savedTokens: []*Token{
+				&Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+			},
+			expErr: ErrExpired,
+		},
+		{
+			title:      "success",
+			tokenValue: "t1",
+			savedTokens: []*Token{
+				&Token{Value: "t1", Expiration: time.Now().Add(time.Hour)},
+			},
+			expTokenValues: []string{"t1"},
+		},
+		{
+			title:      "success-multiple-tokens",
+			tokenValue: "t1",
+			savedTokens: []*Token{
+				// Good ones
+				&Token{LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				&Token{LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
+				&Token{LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
+				// Bad ones:
+				&Token{LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(-time.Minute)},
+				&Token{LoweredEmail: "bs@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(time.Hour)},
+			},
+			expTokenValues: []string{"t1", "t2", "t3"},
+		},
+	}
+
+	for _, c := range cases {
+		sendEmail := func(ctx context.Context, to, body string) error { return nil }
+		a := NewAuthenticator(client, sendEmail, Config{})
+
+		// Clear tokens
+		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+			t.Errorf("Failed to clear tokens: %v", err)
+		}
+		for _, savedToken := range c.savedTokens {
+			if _, err := a.c.InsertOne(ctx, savedToken); err != nil {
+				t.Errorf("Failed to insert token: %v", err)
+			}
+		}
+
+		tokens, err := a.Tokens(ctx, c.tokenValue)
+		if c.expErr != nil {
+			if err != c.expErr {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
+			}
+		} else {
+			// Verify expected token set:
+			sort.Strings(c.expTokenValues)
+			sort.Slice(tokens, func(i int, j int) bool {
+				return tokens[i].Value < tokens[j].Value
+			})
+			for i, expTokenValue := range c.expTokenValues {
+				if tokens[i].Value != expTokenValue {
+					t.Errorf("[%s] Expected: %+v, got: %+v", c.title, expTokenValue, tokens[i].Value)
+				}
 			}
 		}
 	}
