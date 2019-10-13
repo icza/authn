@@ -295,6 +295,101 @@ func TestVerifyEntryCode(t *testing.T) {
 	}
 }
 
+func TestVerifyToken(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		title      string
+		savedToken *Token
+		tokenValue string
+		client     *Client
+		expErr     error
+	}{
+		{
+			title:      "unknown token value error",
+			tokenValue: "unknown",
+			expErr:     ErrUnknown,
+		},
+		{
+			title:      "expired error",
+			tokenValue: "t1",
+			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+			expErr:     ErrExpired,
+		},
+		{
+			title:      "success",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+		},
+		{
+			title:      "success-nil-client",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+		},
+		{
+			title:      "success-nil-client-no-saved-client",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		sendEmail := func(ctx context.Context, to, body string) error { return nil }
+		a := NewAuthenticator(client, sendEmail, Config{})
+
+		// Clear tokens
+		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+			t.Errorf("Failed to clear tokens: %v", err)
+		}
+		if c.savedToken != nil {
+			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
+				t.Errorf("Failed to insert token: %v", err)
+			}
+		}
+
+		token, err := a.VerifyToken(ctx, c.tokenValue, c.client)
+		if c.expErr != nil {
+			if err != c.expErr {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
+			}
+		} else {
+			// Verify token:
+			expToken := new(Token)
+			*expToken = *token
+			expToken.EntryClient = nil // Token.EntryClient must not change
+			if c.client == nil {
+				// If no client is provided, the saved one should be kept.
+				if c.savedToken.Client != nil {
+					c.client = c.savedToken.Client
+				} else {
+					// And if no saved client, a new one will be created
+					c.client = &Client{}
+				}
+			}
+			now := time.Now()
+			if *token != *expToken ||
+				token.Client.UserAgent != c.client.UserAgent || // Client.UserAgent must be updated
+				token.Client.IP != c.client.IP || // Client.IP must be updated
+				diffTime(now, token.Client.At) { // Client.At must be set
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
+			}
+		}
+
+	}
+}
+
 // diffTime tells if 2 time instances are different from each other
 // in the meaning that their difference is bigger than 1 second.
 func diffTime(t1, t2 time.Time) bool {
