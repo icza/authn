@@ -406,7 +406,31 @@ func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) 
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired (or has already been invalidated), ErrExpired is returned.
-func (a *Authenticator) Tokens(tokenValue string) (tokens []*Token, err error) {
-	// TODO
+func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens []*Token, err error) {
+	var token *Token
+	if err = a.c.FindOne(ctx, bson.M{"value": tokenValue}).Decode(&token); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, ErrUnknown
+		}
+		return nil, fmt.Errorf("failed to load token: %w", err)
+	}
+	if token.Expired() {
+		return nil, ErrExpired
+	}
+
+	filter := bson.M{
+		"lemail": token.LoweredEmail,
+		"exp":    bson.M{"$gt": time.Now()},
+	}
+
+	curs, err := a.c.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list token: %w", err)
+	}
+	if err = curs.All(ctx, &tokens); err != nil {
+		return nil, fmt.Errorf("failed to list token: %w", err)
+	}
+
+	// All good:
 	return
 }
