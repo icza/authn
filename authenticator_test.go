@@ -28,6 +28,8 @@ func init() {
 	}
 }
 
+var emptySendEmail = func(ctx context.Context, to, body string) error { return nil }
+
 func TestNewAuthenticator(t *testing.T) {
 	expectPanic := func(name string) {
 		if r := recover(); r == nil {
@@ -45,8 +47,7 @@ func TestNewAuthenticator(t *testing.T) {
 		NewAuthenticator(client, nil, Config{})
 	}()
 
-	sendEmail := func(ctx context.Context, to, body string) error { return nil }
-	a := NewAuthenticator(client, sendEmail, Config{})
+	a := NewAuthenticator(client, emptySendEmail, Config{})
 
 	defCfg := Config{
 		AuthnDBName:          DefaultAuthnDBName,
@@ -81,13 +82,29 @@ func TestNewAuthenticator(t *testing.T) {
 		EmailTemplate:        "etempl",
 	}
 
-	a = NewAuthenticator(client, sendEmail, cfg)
+	a = NewAuthenticator(client, emptySendEmail, cfg)
 	if a.cfg != cfg {
 		t.Errorf("Expected %#v, got: %#v", cfg, a.cfg)
 	}
 	// clear temp db
 	if err := client.Database(cfg.AuthnDBName).Drop(context.Background()); err != nil {
 		t.Errorf("Failed to clear temp db: %v", err)
+	}
+}
+
+func initTokensCollection(ctx context.Context, a *Authenticator, t *testing.T, savedTokens ...*Token) {
+	// Clear tokens
+	if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+		t.Errorf("Failed to clear tokens: %v", err)
+	}
+
+	for _, savedToken := range savedTokens {
+		if savedToken == nil {
+			continue
+		}
+		if _, err := a.c.InsertOne(ctx, savedToken); err != nil {
+			t.Errorf("Failed to insert token: %v", err)
+		}
 	}
 }
 
@@ -176,10 +193,7 @@ func TestSendEntryCode(t *testing.T) {
 		}
 		a := NewAuthenticator(client, sendEmail, c.cfg)
 
-		// Clear tokens
-		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-			t.Errorf("Failed to clear tokens: %v", err)
-		}
+		initTokensCollection(ctx, a, t)
 
 		err := a.SendEntryCode(ctx, c.email, c.client, c.data)
 		if gotErr := err != nil; gotErr != c.expErr {
@@ -290,18 +304,9 @@ func TestVerifyEntryCode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		sendEmail := func(ctx context.Context, to, body string) error { return nil }
-		a := NewAuthenticator(client, sendEmail, Config{})
+		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		// Clear tokens
-		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-			t.Errorf("Failed to clear tokens: %v", err)
-		}
-		if c.savedToken != nil {
-			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
-				t.Errorf("Failed to insert token: %v", err)
-			}
-		}
+		initTokensCollection(ctx, a, t, c.savedToken)
 
 		token, err := a.VerifyEntryCode(ctx, c.entryCode, c.client)
 		if c.expErr != nil {
@@ -399,18 +404,9 @@ func TestVerifyToken(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		sendEmail := func(ctx context.Context, to, body string) error { return nil }
-		a := NewAuthenticator(client, sendEmail, Config{})
+		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		// Clear tokens
-		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-			t.Errorf("Failed to clear tokens: %v", err)
-		}
-		if c.savedToken != nil {
-			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
-				t.Errorf("Failed to insert token: %v", err)
-			}
-		}
+		initTokensCollection(ctx, a, t, c.savedToken)
 
 		token, err := a.VerifyToken(ctx, c.tokenValue, c.client)
 		if c.expErr != nil {
@@ -475,15 +471,7 @@ func TestInvalidateToken(t *testing.T) {
 		sendEmail := func(ctx context.Context, to, body string) error { return nil }
 		a := NewAuthenticator(client, sendEmail, Config{})
 
-		// Clear tokens
-		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-			t.Errorf("Failed to clear tokens: %v", err)
-		}
-		if c.savedToken != nil {
-			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
-				t.Errorf("Failed to insert token: %v", err)
-			}
-		}
+		initTokensCollection(ctx, a, t, c.savedToken)
 
 		err := a.InvalidateToken(ctx, c.tokenValue)
 		if c.expErr != nil {
@@ -550,18 +538,9 @@ func TestTokens(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		sendEmail := func(ctx context.Context, to, body string) error { return nil }
-		a := NewAuthenticator(client, sendEmail, Config{})
+		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		// Clear tokens
-		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-			t.Errorf("Failed to clear tokens: %v", err)
-		}
-		for _, savedToken := range c.savedTokens {
-			if _, err := a.c.InsertOne(ctx, savedToken); err != nil {
-				t.Errorf("Failed to insert token: %v", err)
-			}
-		}
+		initTokensCollection(ctx, a, t, c.savedTokens...)
 
 		tokens, err := a.Tokens(ctx, c.tokenValue)
 		if c.expErr != nil {
