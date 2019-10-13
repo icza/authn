@@ -280,7 +280,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	if token.EntryCodeVerified {
 		return nil, ErrEntryCodeAlreadyVerified
 	}
-	if !token.Expired() {
+	if token.Expired() {
 		return nil, ErrExpired
 	}
 
