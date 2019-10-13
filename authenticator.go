@@ -330,8 +330,42 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
-func (a *Authenticator) VerifyToken(tokenValue string, client *Client) (token *Token, err error) {
-	// TODO
+func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client) (token *Token, err error) {
+	filter := bson.M{"value": tokenValue}
+	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, ErrUnknown
+		}
+		return nil, fmt.Errorf("failed to load token: %w", err)
+	}
+	if token.Expired() {
+		return nil, ErrExpired
+	}
+
+	// Update token's client
+	if client != nil {
+		token.Client = client
+	} else {
+		if token.Client == nil {
+			token.Client = &Client{}
+		}
+	}
+	now := time.Now()
+	token.Client.At = now
+
+	_, err = a.c.UpdateOne(ctx,
+		filter,
+		bson.M{
+			"$set": bson.M{
+				"client": token.Client,
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update token: %w", err)
+	}
+
+	// All good:
 	return
 }
 
