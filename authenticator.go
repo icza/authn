@@ -173,6 +173,7 @@ func (a *Authenticator) initDB() {
 
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
+//
 // If client is provided, it will be saved as Token.EntryClient, Client.At filled
 // with current timestamp. If client is `nil`, `EntryClient` will not be set.
 // Use an empty Client if you just want the At timestamp to be recorded.
@@ -264,6 +265,7 @@ var (
 
 // VerifyEntryCode verifies the given entry code.
 // Should be called to verify user's email upon login.
+//
 // If client is provided, it will be saved as Token.EntryClient, Client.At filled
 // with current timestamp. If client is `nil`, `EntryClient` will not be updated.
 // Use an empty Client if you just want the At timestamp to be updated.
@@ -326,6 +328,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 
 // VerifyToken verifies the given token value.
 // Should be called to verify the authenticity of a logged in user.
+//
 // If client is provided, it will be saved as Token.Client, Client.At filled
 // with current timestamp. If client is `nil`, `Client` will not be updated.
 // Use an empty Client if you just want the At timestamp to be updated.
@@ -368,14 +371,19 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 }
 
 // InvalidateToken invalidates the given token.
-// If the token value is unknown or the token is already invalidated, this method is a no-op.
 // Should be called when a user wants to log out (only the given session).
+//
+// If the token value is unknown, ErrUnknown is returned.
+// If the token has expired (or has already been invalidated), ErrExpired is returned.
 func (a *Authenticator) InvalidateToken(tokenValue string) (err error) {
 	// TODO
 	return
 }
 
 // Tokens returns all valid tokens associated with the owner of the given token.
+//
+// If the token value is unknown, ErrUnknown is returned.
+// If the token has expired (or has already been invalidated), ErrExpired is returned.
 func (a *Authenticator) Tokens(tokenValue string) (tokens []*Token, err error) {
 	// TODO
 	return
