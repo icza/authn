@@ -308,8 +308,18 @@ func TestVerifyEntryCode(t *testing.T) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
-			now := time.Now()
+			// Verify returned and persisted token consistency:
+			var loadedToken *Token
+			if err := a.c.FindOne(ctx, bson.M{"ecode": c.entryCode}).Decode(&loadedToken); err != nil {
+				t.Errorf("[%s] Failed to load token: %v", c.title, err)
+			}
+			if tokensDiffer(loadedToken, token) {
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, loadedToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, loadedToken.EntryClient, token.EntryClient)
+			}
+
 			// Verify token:
+			now := time.Now()
 			c.expToken.Expiration = now.Add(a.cfg.TokenExpiration)
 			if c.client != nil {
 				c.expToken.EntryClient.At = now
@@ -407,8 +417,18 @@ func TestVerifyToken(t *testing.T) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
+			// Verify returned and persisted token consistency:
+			var loadedToken *Token
+			if err := a.c.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
+				t.Errorf("[%s] Failed to load token: %v", c.title, err)
+			}
+			if tokensDiffer(loadedToken, token) {
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, loadedToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, loadedToken.Client, token.Client)
+			}
+
+			// Verify expected token:
 			now := time.Now()
-			// Verify token:
 			if c.client != nil {
 				c.expToken.Client.At = now
 			}
@@ -420,7 +440,7 @@ func TestVerifyToken(t *testing.T) {
 	}
 }
 
-// tokensMatch compares to tokens "deeply", comparing timestamps using diffTime().
+// tokensDiffer compares to tokens "deeply", comparing timestamps using diffTime().
 func tokensDiffer(t1, t2 *Token) bool {
 	return t1.Email != t2.Email ||
 		t2.LoweredEmail != t2.LoweredEmail ||
@@ -446,8 +466,8 @@ func clientsDiffer(c1, c2 *Client) bool {
 		timesDiffer(c1.At, c2.At)
 }
 
-// timesDiffer tells if 2 time instances are different from each other
-// in the meaning that their difference is bigger than 1 second.
+// timesDiffer compares if 2 time instances, concluding mismatch if the
+// difference is bigger than 1 second.
 func timesDiffer(t1, t2 time.Time) bool {
 	const maxDelta = time.Second
 	delta := t1.Sub(t2)

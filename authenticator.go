@@ -174,9 +174,8 @@ func (a *Authenticator) initDB() {
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
 //
-// If client is provided, it will be saved as Token.EntryClient, Client.At filled
+// If client is provided, it will be saved as Token.EntryClient, At field filled
 // with current timestamp. If client is `nil`, `EntryClient` will not be set.
-// Use an empty Client if you just want the At timestamp to be recorded.
 //
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
@@ -266,9 +265,8 @@ var (
 // VerifyEntryCode verifies the given entry code.
 // Should be called to verify user's email upon login.
 //
-// If client is provided, it will be saved as Token.EntryClient, Client.At filled
+// If client is provided, it will be saved as Token.EntryClient, At field filled
 // with current timestamp. If client is `nil`, `EntryClient` will not be updated.
-// Use an empty Client if you just want the At timestamp to be updated.
 //
 // If the entry code is unknown, ErrUnknown is returned.
 // If the entry code has expired, ErrExpired is returned.
@@ -329,9 +327,8 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 // VerifyToken verifies the given token value.
 // Should be called to verify the authenticity of a logged in user.
 //
-// If client is provided, it will be saved as Token.Client, Client.At filled
+// If client is provided, it will be saved as Token.Client, At field filled
 // with current timestamp. If client is `nil`, `Client` will not be updated.
-// Use an empty Client if you just want the At timestamp to be updated.
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
