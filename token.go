@@ -8,7 +8,7 @@ type Client struct {
 	UserAgent string `bson:"agent,omitempty"`
 
 	// IP address of the client.
-	IP string `bson:"ip"`
+	IP string `bson:"ip,omitempty"`
 
 	// At tells when the token was accessed.
 	At time.Time `bson:"at"`
@@ -30,7 +30,7 @@ type Token struct {
 	EntryCode string `bson:"ecode"`
 
 	// EntryClient is the client information of the entry code verification.
-	EntryClient *Client `bson:"eclient"`
+	EntryClient *Client `bson:"eclient,omitempty"`
 
 	// EntryCodeVerified tells if this entry code has been verified.
 	EntryCodeVerified bool `bson:"ecodeVerified"`

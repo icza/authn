@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +102,7 @@ func TestSendEntryCode(t *testing.T) {
 		data         map[string]interface{}
 		expBody      string
 		expErr       bool
+		expToken     *Token
 	}{
 		{
 			title:  "invalid email",
@@ -127,16 +127,42 @@ func TestSendEntryCode(t *testing.T) {
 			title:  "success",
 			email:  "As@as.hu",
 			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
+			expToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryClient:  &Client{UserAgent: "ua1", IP: "1.2.3.4"},
+			},
 		},
 		{
-			title:  "success-custom-data",
+			title: "success-no-client",
+			email: "As@as.hu",
+			expToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+			},
+		},
+		{
+			title:  "success-empty-client",
 			email:  "As@as.hu",
-			client: &Client{UserAgent: "ua1", IP: "1.2.3.4"},
+			client: &Client{},
+			expToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryClient:  &Client{},
+			},
+		},
+		{
+			title: "success-custom-data",
+			email: "As@as.hu",
 			cfg: Config{
 				EmailTemplate: "{{.Data.Seven}}",
 			},
 			data:    map[string]interface{}{"Seven": 7},
 			expBody: "7",
+			expToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+			},
 		},
 	}
 
@@ -169,24 +195,23 @@ func TestSendEntryCode(t *testing.T) {
 			}
 		} else {
 			// Verify token:
+			now := time.Now()
 			var token *Token
 			if err := a.c.FindOne(ctx, bson.M{}).Decode(&token); err != nil {
 				t.Errorf("[%s] Can't find token: %v", c.title, err)
 			}
-			expToken := new(Token)
-			*expToken = *token
-			expToken.Email = c.email
-			expToken.LoweredEmail = strings.ToLower(c.email)
-			expToken.Client = nil // Token.Client must not change
-			expToken.EntryClient.At = c.client.At
-			now := time.Now()
-			if *token != *expToken || *token.EntryClient != *c.client || // Explicit set fields above must match
+			c.expToken.EntryCode = token.EntryCode
+			c.expToken.Value = token.Value
+			c.expToken.Created = now
+			c.expToken.Expiration = now.Add(a.cfg.EntryCodeExpiration)
+			if c.client != nil {
+				c.expToken.EntryClient.At = now
+			}
+			if tokensDiffer(c.expToken, token) ||
 				len(token.EntryCode) != a.cfg.EntryCodeBytes*2 || // Entry code must be of specific length
-				len(token.Value) < a.cfg.TokenValueBytes*4/3 || // Token be of specific length (base64)
-				diffTime(now.Add(a.cfg.EntryCodeExpiration), token.Expiration) || // Expiration must be set
-				diffTime(now, token.Created) || // Created must be set
-				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set
-				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
+				len(token.Value) < a.cfg.TokenValueBytes*4/3 { // Token be of specific length (base64)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken.EntryClient, token.EntryClient)
 			}
 		}
 	}
@@ -201,6 +226,7 @@ func TestVerifyEntryCode(t *testing.T) {
 		entryCode  string
 		client     *Client
 		expErr     error
+		expToken   *Token
 	}{
 		{
 			title:     "unknown entry code error",
@@ -228,6 +254,11 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				EntryCode:         "ec1",
+				EntryClient:       &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				EntryCodeVerified: true,
+			},
 		},
 		{
 			title:     "success-nil-client",
@@ -237,6 +268,11 @@ func TestVerifyEntryCode(t *testing.T) {
 				Expiration:  time.Now().Add(time.Hour),
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
+			expToken: &Token{
+				EntryCode:         "ec1",
+				EntryClient:       &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				EntryCodeVerified: true,
+			},
 		},
 		{
 			title:     "success-nil-client-no-saved-client",
@@ -244,6 +280,10 @@ func TestVerifyEntryCode(t *testing.T) {
 			savedToken: &Token{
 				EntryCode:  "ec1",
 				Expiration: time.Now().Add(time.Hour),
+			},
+			expToken: &Token{
+				EntryCode:         "ec1",
+				EntryCodeVerified: true,
 			},
 		},
 	}
@@ -268,30 +308,17 @@ func TestVerifyEntryCode(t *testing.T) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
-			// Verify token:
-			expToken := new(Token)
-			*expToken = *token
-			expToken.EntryCodeVerified = true
-			expToken.Client = nil // Token.Client must not change
-			if c.client == nil {
-				// If no client is provided, the saved one should be kept.
-				if c.savedToken.EntryClient != nil {
-					c.client = c.savedToken.EntryClient
-				} else {
-					// And if no saved client, a new one will be created
-					c.client = &Client{}
-				}
-			}
 			now := time.Now()
-			if *token != *expToken ||
-				token.EntryClient.UserAgent != c.client.UserAgent || // EntryClient.UserAgent must be updated
-				token.EntryClient.IP != c.client.IP || // EntryClient.IP must be updated
-				diffTime(now.Add(a.cfg.TokenExpiration), token.Expiration) || // Expiration must be updated
-				diffTime(now, token.EntryClient.At) { // EntryClient.At must be set
-				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
+			// Verify token:
+			c.expToken.Expiration = now.Add(a.cfg.TokenExpiration)
+			if c.client != nil {
+				c.expToken.EntryClient.At = now
+			}
+			if tokensDiffer(c.expToken, token) {
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken.EntryClient, token.EntryClient)
 			}
 		}
-
 	}
 }
 
@@ -304,6 +331,7 @@ func TestVerifyToken(t *testing.T) {
 		tokenValue string
 		client     *Client
 		expErr     error
+		expToken   *Token
 	}{
 		{
 			title:      "unknown token value error",
@@ -325,6 +353,11 @@ func TestVerifyToken(t *testing.T) {
 				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			},
 		},
 		{
 			title:      "success-nil-client",
@@ -334,11 +367,20 @@ func TestVerifyToken(t *testing.T) {
 				Expiration: time.Now().Add(time.Hour),
 				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
+			expToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
 		},
 		{
 			title:      "success-nil-client-no-saved-client",
 			tokenValue: "t1",
 			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+			},
+			expToken: &Token{
 				Value:      "t1",
 				Expiration: time.Now().Add(time.Hour),
 			},
@@ -365,34 +407,48 @@ func TestVerifyToken(t *testing.T) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
-			// Verify token:
-			expToken := new(Token)
-			*expToken = *token
-			expToken.EntryClient = nil // Token.EntryClient must not change
-			if c.client == nil {
-				// If no client is provided, the saved one should be kept.
-				if c.savedToken.Client != nil {
-					c.client = c.savedToken.Client
-				} else {
-					// And if no saved client, a new one will be created
-					c.client = &Client{}
-				}
-			}
 			now := time.Now()
-			if *token != *expToken ||
-				token.Client.UserAgent != c.client.UserAgent || // Client.UserAgent must be updated
-				token.Client.IP != c.client.IP || // Client.IP must be updated
-				diffTime(now, token.Client.At) { // Client.At must be set
-				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, expToken, token)
+			// Verify token:
+			if c.client != nil {
+				c.expToken.Client.At = now
+			}
+			if tokensDiffer(c.expToken, token) {
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken, token)
+				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, c.expToken.EntryClient, token.EntryClient)
 			}
 		}
-
 	}
 }
 
-// diffTime tells if 2 time instances are different from each other
+// tokensMatch compares to tokens "deeply", comparing timestamps using diffTime().
+func tokensDiffer(t1, t2 *Token) bool {
+	return t1.Email != t2.Email ||
+		t2.LoweredEmail != t2.LoweredEmail ||
+		timesDiffer(t1.Created, t2.Created) ||
+		t1.EntryCode != t2.EntryCode ||
+		clientsDiffer(t1.EntryClient, t2.EntryClient) ||
+		t1.EntryCodeVerified != t2.EntryCodeVerified ||
+		clientsDiffer(t1.Client, t2.Client) ||
+		timesDiffer(t1.Expiration, t2.Expiration) ||
+		t1.Value != t2.Value
+}
+
+// clientsDiffer compares to clients "deeply", comparing timestamps using diffTime().
+func clientsDiffer(c1, c2 *Client) bool {
+	if c1 == nil && c2 == nil {
+		return false
+	}
+	if c1 == nil || c2 == nil {
+		return true // Only one is nil, they can't match
+	}
+	return c1.UserAgent != c2.UserAgent ||
+		c1.IP != c2.IP ||
+		timesDiffer(c1.At, c2.At)
+}
+
+// timesDiffer tells if 2 time instances are different from each other
 // in the meaning that their difference is bigger than 1 second.
-func diffTime(t1, t2 time.Time) bool {
+func timesDiffer(t1, t2 time.Time) bool {
 	const maxDelta = time.Second
 	delta := t1.Sub(t2)
 	return delta > maxDelta || delta < -maxDelta

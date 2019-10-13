@@ -173,7 +173,9 @@ func (a *Authenticator) initDB() {
 
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
-// If client is provided, it will be saved as Token.EntryClient.
+// If client is provided, it will be saved as Token.EntryClient, Client.At filled
+// with current timestamp. If client is `nil`, `EntryClient` will not be set.
+// Use an empty Client if you just want the At timestamp to be recorded.
 //
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
@@ -198,11 +200,10 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	// Entry code and token must be unique. Check it by inserting first to avoid
 	// emailing out someone else's entry code or token.
 
-	if client == nil {
-		client = &Client{}
-	}
 	now := time.Now()
-	client.At = now
+	if client != nil {
+		client.At = now
+	}
 	token := &Token{
 		Email:        addr.Address,
 		LoweredEmail: strings.ToLower(addr.Address),
@@ -263,7 +264,9 @@ var (
 
 // VerifyEntryCode verifies the given entry code.
 // Should be called to verify user's email upon login.
-// If client is provided, it will be saved as Token.EntryClient.
+// If client is provided, it will be saved as Token.EntryClient, Client.At filled
+// with current timestamp. If client is `nil`, `EntryClient` will not be updated.
+// Use an empty Client if you just want the At timestamp to be updated.
 //
 // If the entry code is unknown, ErrUnknown is returned.
 // If the entry code has expired, ErrExpired is returned.
@@ -286,16 +289,19 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 
 	// Fill new state into token (only returned if update succeeds):
 	token.EntryCodeVerified = true
+	now := time.Now()
+	token.Expiration = now.Add(a.cfg.TokenExpiration)
+
+	setDoc := bson.M{
+		"ecodeVerified": true,
+		"exp":           token.Expiration,
+	}
+
 	if client != nil {
 		token.EntryClient = client
-	} else {
-		if token.EntryClient == nil {
-			token.EntryClient = &Client{}
-		}
+		token.EntryClient.At = now
+		setDoc["eclient"] = token.EntryClient
 	}
-	now := time.Now()
-	token.EntryClient.At = now
-	token.Expiration = now.Add(a.cfg.TokenExpiration)
 
 	// Use 2-phase update:
 	var updateResult *mongo.UpdateResult
@@ -304,13 +310,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 			"ecode":         code,
 			"ecodeVerified": false,
 		},
-		bson.M{
-			"$set": bson.M{
-				"ecodeVerified": true,
-				"eclient":       token.EntryClient,
-				"exp":           token.Expiration,
-			},
-		},
+		bson.M{"$set": setDoc},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update token: %w", err)
@@ -326,7 +326,9 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 
 // VerifyToken verifies the given token value.
 // Should be called to verify the authenticity of a logged in user.
-// If client is provided, it will be saved as Token.Client.
+// If client is provided, it will be saved as Token.Client, Client.At filled
+// with current timestamp. If client is `nil`, `Client` will not be updated.
+// Use an empty Client if you just want the At timestamp to be updated.
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
@@ -342,27 +344,23 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 		return nil, ErrExpired
 	}
 
-	// Update token's client
 	if client != nil {
+		// Update token's client
+		now := time.Now()
 		token.Client = client
-	} else {
-		if token.Client == nil {
-			token.Client = &Client{}
-		}
-	}
-	now := time.Now()
-	token.Client.At = now
+		token.Client.At = now
 
-	_, err = a.c.UpdateOne(ctx,
-		filter,
-		bson.M{
-			"$set": bson.M{
-				"client": token.Client,
+		_, err = a.c.UpdateOne(ctx,
+			filter,
+			bson.M{
+				"$set": bson.M{
+					"client": token.Client,
+				},
 			},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update token: %w", err)
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update token: %w", err)
+		}
 	}
 
 	// All good:
