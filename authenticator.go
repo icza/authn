@@ -165,6 +165,13 @@ func (a *Authenticator) initDB() {
 			},
 			Options: options.Index().SetUnique(true),
 		},
+		{
+			Keys: bson.D{
+				{Key: "lemail", Value: 1},
+				{Key: "ecodeVerified", Value: 1},
+				{Key: "exp", Value: 1},
+			},
+		},
 	})
 	if err != nil {
 		log.Printf("Failed to create authn db indices: %v", err)
