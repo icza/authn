@@ -372,8 +372,33 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired (or has already been invalidated), ErrExpired is returned.
-func (a *Authenticator) InvalidateToken(tokenValue string) (err error) {
-	// TODO
+func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) (err error) {
+	filter := bson.M{"value": tokenValue}
+	var token *Token
+	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return ErrUnknown
+		}
+		return fmt.Errorf("failed to load token: %w", err)
+	}
+	if token.Expired() {
+		return ErrExpired
+	}
+
+	// Update token's expiration to make it expired.
+	_, err = a.c.UpdateOne(ctx,
+		filter,
+		bson.M{
+			"$set": bson.M{
+				"exp": time.Now(),
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update token: %w", err)
+	}
+
+	// All good:
 	return
 }
 
