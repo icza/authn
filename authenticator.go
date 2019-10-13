@@ -419,8 +419,9 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 	}
 
 	filter := bson.M{
-		"lemail": token.LoweredEmail,
-		"exp":    bson.M{"$gt": time.Now()},
+		"lemail":        token.LoweredEmail,
+		"exp":           bson.M{"$gt": time.Now()},
+		"ecodeVerified": true,
 	}
 
 	curs, err := a.c.Find(ctx, filter)
