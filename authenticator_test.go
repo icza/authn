@@ -509,7 +509,7 @@ func TestTokens(t *testing.T) {
 			title:      "expired error",
 			tokenValue: "t1",
 			savedTokens: []*Token{
-				&Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+				{Value: "t1", Expiration: time.Now().Add(-time.Second)},
 			},
 			expErr: ErrExpired,
 		},
@@ -517,7 +517,7 @@ func TestTokens(t *testing.T) {
 			title:      "success",
 			tokenValue: "t1",
 			savedTokens: []*Token{
-				&Token{EntryCodeVerified: true, Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				{EntryCodeVerified: true, Value: "t1", Expiration: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1"},
 		},
@@ -526,13 +526,13 @@ func TestTokens(t *testing.T) {
 			tokenValue: "t1",
 			savedTokens: []*Token{
 				// Good ones
-				&Token{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
-				&Token{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
-				&Token{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
+				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
+				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
 				// Bad ones:
-				&Token{EntryCodeVerified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(time.Hour)},
-				&Token{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(-time.Minute)},
-				&Token{EntryCodeVerified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expiration: time.Now().Add(time.Hour)},
+				{EntryCodeVerified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(time.Hour)},
+				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(-time.Minute)},
+				{EntryCodeVerified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expiration: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
