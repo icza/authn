@@ -440,6 +440,67 @@ func TestVerifyToken(t *testing.T) {
 	}
 }
 
+func TestInvalidateToken(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		title      string
+		savedToken *Token
+		tokenValue string
+		expErr     error
+	}{
+		{
+			title:      "unknown token value error",
+			tokenValue: "unknown",
+			expErr:     ErrUnknown,
+		},
+		{
+			title:      "expired error",
+			tokenValue: "t1",
+			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+			expErr:     ErrExpired,
+		},
+		{
+			title:      "success",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		sendEmail := func(ctx context.Context, to, body string) error { return nil }
+		a := NewAuthenticator(client, sendEmail, Config{})
+
+		// Clear tokens
+		if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
+			t.Errorf("Failed to clear tokens: %v", err)
+		}
+		if c.savedToken != nil {
+			if _, err := a.c.InsertOne(ctx, c.savedToken); err != nil {
+				t.Errorf("Failed to insert token: %v", err)
+			}
+		}
+
+		err := a.InvalidateToken(ctx, c.tokenValue)
+		if c.expErr != nil {
+			if err != c.expErr {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
+			}
+		} else {
+			var loadedToken *Token
+			if err := a.c.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
+				t.Errorf("[%s] Failed to load token: %v", c.title, err)
+			}
+			if !loadedToken.Expired() {
+				t.Errorf("[%s]\nExpected expired", c.title)
+			}
+		}
+	}
+}
+
 // tokensDiffer compares to tokens "deeply", comparing timestamps using diffTime().
 func tokensDiffer(t1, t2 *Token) bool {
 	return t1.Email != t2.Email ||
