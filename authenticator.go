@@ -269,6 +269,15 @@ var (
 	ErrExpired = errors.New("expired")
 )
 
+// Validator is a function which can check a token before it is accepted and updated
+// in Authenticator.VerifyEntryCode() and Authenticator.VerifyToken(). The validator
+// receives the persisted, un-updated token and the new client passed to the
+// above functions.
+//
+// Validators may be used to perform extensive checks on the client, e.g. check
+// and restrict IP addresses or disallow changed user agents.
+type Validator func(ctx context.Context, token *Token, client *Client) error
+
 // VerifyEntryCode verifies the given entry code.
 // Should be called to verify user's email upon login.
 //
@@ -280,7 +289,11 @@ var (
 //
 // An entry code can only be verified once. If the entry code is known
 // but has been verified before, ErrEntryCodeAlreadyVerified is returned.
-func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client) (token *Token, err error) {
+//
+// If there are validators passed, they are called before the token is accepted
+// and updated, in the order they are provided, which may veto the decision.
+// If a validation error occurs, an error wrappign that is returned early.
+func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
 	if err = a.c.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUnknown
@@ -292,6 +305,12 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	}
 	if token.Expired() {
 		return nil, ErrExpired
+	}
+
+	for _, validator := range validators {
+		if err := validator(ctx, token, client); err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
 	}
 
 	// Fill new state into token (only returned if update succeeds):
@@ -339,7 +358,11 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
-func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client) (token *Token, err error) {
+//
+// If there are validators passed, they are called before the token is accepted
+// and updated, in the order they are provided, which may veto the decision.
+// If a validation error occurs, an error wrappign that is returned early.
+func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
 	filter := bson.M{"value": tokenValue}
 	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -349,6 +372,12 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 	}
 	if token.Expired() {
 		return nil, ErrExpired
+	}
+
+	for _, validator := range validators {
+		if err := validator(ctx, token, client); err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
 	}
 
 	if client != nil {

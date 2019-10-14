@@ -28,7 +28,12 @@ func init() {
 	}
 }
 
-var emptySendEmail = func(ctx context.Context, to, body string) error { return nil }
+var (
+	emptySendEmail    = func(ctx context.Context, to, body string) error { return nil }
+	validatorOK       = func(ctx context.Context, token *Token, client *Client) error { return nil }
+	errValidationTest = errors.New("validation test error")
+	validatorErr      = func(ctx context.Context, token *Token, client *Client) error { return errValidationTest }
+)
 
 func TestNewAuthenticator(t *testing.T) {
 	expectPanic := func(name string) {
@@ -240,6 +245,7 @@ func TestVerifyEntryCode(t *testing.T) {
 		savedToken *Token
 		entryCode  string
 		client     *Client
+		validators []Validator
 		expErr     error
 		expToken   *Token
 	}{
@@ -261,6 +267,13 @@ func TestVerifyEntryCode(t *testing.T) {
 			expErr:     ErrExpired,
 		},
 		{
+			title:      "validator error",
+			entryCode:  "ec1",
+			savedToken: &Token{EntryCode: "ec1", Expiration: time.Now().Add(time.Minute)},
+			validators: []Validator{validatorErr},
+			expErr:     errValidationTest,
+		},
+		{
 			title:     "success",
 			entryCode: "ec1",
 			savedToken: &Token{
@@ -269,6 +282,30 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				EntryCode:         "ec1",
+				EntryClient:       &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				EntryCodeVerified: true,
+			},
+		},
+		{
+			title:     "success-validators",
+			entryCode: "ec1",
+			savedToken: &Token{
+				EntryCode:   "ec1",
+				Expiration:  time.Now().Add(time.Hour),
+				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			validators: []Validator{
+				validatorOK,
+				func(ctx context.Context, token *Token, client *Client) error {
+					if token.EntryClient.UserAgent != "ua" || client.UserAgent != "ua2" {
+						return fmt.Errorf("unexpected validator params")
+					}
+					return nil
+				},
+			},
 			expToken: &Token{
 				EntryCode:         "ec1",
 				EntryClient:       &Client{UserAgent: "ua2", IP: "2.2.3.4"},
@@ -308,9 +345,9 @@ func TestVerifyEntryCode(t *testing.T) {
 
 		initTokensCollection(ctx, a, t, c.savedToken)
 
-		token, err := a.VerifyEntryCode(ctx, c.entryCode, c.client)
+		token, err := a.VerifyEntryCode(ctx, c.entryCode, c.client, c.validators...)
 		if c.expErr != nil {
-			if err != c.expErr {
+			if !errors.Is(err, c.expErr) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
@@ -346,6 +383,7 @@ func TestVerifyToken(t *testing.T) {
 		savedToken *Token
 		tokenValue string
 		client     *Client
+		validators []Validator
 		expErr     error
 		expToken   *Token
 	}{
@@ -361,6 +399,13 @@ func TestVerifyToken(t *testing.T) {
 			expErr:     ErrExpired,
 		},
 		{
+			title:      "validator error",
+			tokenValue: "t1",
+			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(time.Minute)},
+			validators: []Validator{validatorErr},
+			expErr:     errValidationTest,
+		},
+		{
 			title:      "success",
 			tokenValue: "t1",
 			savedToken: &Token{
@@ -369,6 +414,30 @@ func TestVerifyToken(t *testing.T) {
 				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			},
+		},
+		{
+			title:      "success",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:      "t1",
+				Expiration: time.Now().Add(time.Hour),
+				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			validators: []Validator{
+				validatorOK,
+				func(ctx context.Context, token *Token, client *Client) error {
+					if token.Client.UserAgent != "ua" || client.UserAgent != "ua2" {
+						return fmt.Errorf("unexpected validator params")
+					}
+					return nil
+				},
+			},
 			expToken: &Token{
 				Value:      "t1",
 				Expiration: time.Now().Add(time.Hour),
@@ -408,9 +477,9 @@ func TestVerifyToken(t *testing.T) {
 
 		initTokensCollection(ctx, a, t, c.savedToken)
 
-		token, err := a.VerifyToken(ctx, c.tokenValue, c.client)
+		token, err := a.VerifyToken(ctx, c.tokenValue, c.client, c.validators...)
 		if c.expErr != nil {
-			if err != c.expErr {
+			if !errors.Is(err, c.expErr) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
@@ -475,7 +544,7 @@ func TestInvalidateToken(t *testing.T) {
 
 		err := a.InvalidateToken(ctx, c.tokenValue)
 		if c.expErr != nil {
-			if err != c.expErr {
+			if !errors.Is(err, c.expErr) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
@@ -545,7 +614,7 @@ func TestTokens(t *testing.T) {
 
 		tokens, err := a.Tokens(ctx, c.tokenValue)
 		if c.expErr != nil {
-			if err != c.expErr {
+			if !errors.Is(err, c.expErr) {
 				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
 			}
 		} else {
