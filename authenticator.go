@@ -292,7 +292,7 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 //
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
-// If a validation error occurs, an error wrappign that is returned early.
+// If a validation error occurs, an error wrapping that is returned early.
 func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
 	if err = a.c.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -361,7 +361,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 //
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
-// If a validation error occurs, an error wrappign that is returned early.
+// If a validation error occurs, an error wrapping that is returned early.
 func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
 	filter := bson.M{"value": tokenValue}
 	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
