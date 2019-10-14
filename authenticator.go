@@ -182,7 +182,7 @@ func (a *Authenticator) initDB() {
 // Should be called when a user wants to login.
 //
 // If client is provided, it will be saved as Token.EntryClient, At field filled
-// with current timestamp. If client is `nil`, `EntryClient` will not be set.
+// with current timestamp. If client is nil, EntryClient will not be set.
 //
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
@@ -282,7 +282,7 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // Should be called to verify user's email upon login.
 //
 // If client is provided, it will be saved as Token.EntryClient, At field filled
-// with current timestamp. If client is `nil`, `EntryClient` will not be updated.
+// with current timestamp. If client is nil, EntryClient will not be updated.
 //
 // If the entry code is unknown, ErrUnknown is returned.
 // If the entry code has expired, ErrExpired is returned.
@@ -354,7 +354,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 // Should be called to verify the authenticity of a logged in user.
 //
 // If client is provided, it will be saved as Token.Client, At field filled
-// with current timestamp. If client is `nil`, `Client` will not be updated.
+// with current timestamp. If client is nil, Client will not be updated.
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
