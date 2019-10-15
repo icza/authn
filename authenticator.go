@@ -168,7 +168,7 @@ func (a *Authenticator) initDB() {
 		{
 			Keys: bson.D{
 				{Key: "lemail", Value: 1},
-				{Key: "ecodeVerified", Value: 1},
+				{Key: "verified", Value: 1},
 				{Key: "exp", Value: 1},
 			},
 		},
@@ -258,9 +258,9 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 }
 
 var (
-	// ErrEntryCodeAlreadyVerified indicates an attempt to verify an already
+	// ErrAlreadyVerified indicates an attempt to verify an already
 	// verified entry code.
-	ErrEntryCodeAlreadyVerified = errors.New("entry code already verified")
+	ErrAlreadyVerified = errors.New("already verified")
 
 	// ErrUnknown indicates that the entry code or token value is unknown.
 	ErrUnknown = errors.New("unknown")
@@ -288,7 +288,7 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // If the entry code has expired, ErrExpired is returned.
 //
 // An entry code can only be verified once. If the entry code is known
-// but has been verified before, ErrEntryCodeAlreadyVerified is returned.
+// but has been verified before, ErrVerified is returned.
 //
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
@@ -300,8 +300,8 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 		}
 		return nil, fmt.Errorf("failed to load token: %w", err)
 	}
-	if token.EntryCodeVerified {
-		return nil, ErrEntryCodeAlreadyVerified
+	if token.Verified {
+		return nil, ErrAlreadyVerified
 	}
 	if token.Expired() {
 		return nil, ErrExpired
@@ -314,13 +314,13 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	}
 
 	// Fill new state into token (only returned if update succeeds):
-	token.EntryCodeVerified = true
+	token.Verified = true
 	now := time.Now()
 	token.Expiration = now.Add(a.cfg.TokenExpiration)
 
 	setDoc := bson.M{
-		"ecodeVerified": true,
-		"exp":           token.Expiration,
+		"verified": true,
+		"exp":      token.Expiration,
 	}
 
 	if client != nil {
@@ -333,8 +333,8 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	var updateResult *mongo.UpdateResult
 	updateResult, err = a.c.UpdateOne(ctx,
 		bson.M{
-			"ecode":         code,
-			"ecodeVerified": false,
+			"ecode":    code,
+			"verified": false,
 		},
 		bson.M{"$set": setDoc},
 	)
@@ -343,7 +343,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	}
 	if updateResult.ModifiedCount == 0 {
 		// We end up here if the entry code was concurrently verified.
-		return nil, ErrEntryCodeAlreadyVerified
+		return nil, ErrAlreadyVerified
 	}
 
 	// All good:
@@ -455,9 +455,9 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 	}
 
 	filter := bson.M{
-		"lemail":        token.LoweredEmail,
-		"exp":           bson.M{"$gt": time.Now()},
-		"ecodeVerified": true,
+		"lemail":   token.LoweredEmail,
+		"exp":      bson.M{"$gt": time.Now()},
+		"verified": true,
 	}
 
 	curs, err := a.c.Find(ctx, filter)

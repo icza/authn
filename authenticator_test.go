@@ -257,8 +257,8 @@ func TestVerifyEntryCode(t *testing.T) {
 		{
 			title:      "already verified error",
 			entryCode:  "ec1",
-			savedToken: &Token{EntryCode: "ec1", EntryCodeVerified: true},
-			expErr:     ErrEntryCodeAlreadyVerified,
+			savedToken: &Token{EntryCode: "ec1", Verified: true},
+			expErr:     ErrAlreadyVerified,
 		},
 		{
 			title:      "expired error",
@@ -283,9 +283,9 @@ func TestVerifyEntryCode(t *testing.T) {
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			expToken: &Token{
-				EntryCode:         "ec1",
-				EntryClient:       &Client{UserAgent: "ua2", IP: "2.2.3.4"},
-				EntryCodeVerified: true,
+				EntryCode:   "ec1",
+				EntryClient: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Verified:    true,
 			},
 		},
 		{
@@ -307,9 +307,9 @@ func TestVerifyEntryCode(t *testing.T) {
 				},
 			},
 			expToken: &Token{
-				EntryCode:         "ec1",
-				EntryClient:       &Client{UserAgent: "ua2", IP: "2.2.3.4"},
-				EntryCodeVerified: true,
+				EntryCode:   "ec1",
+				EntryClient: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Verified:    true,
 			},
 		},
 		{
@@ -321,9 +321,9 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			expToken: &Token{
-				EntryCode:         "ec1",
-				EntryClient:       &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
-				EntryCodeVerified: true,
+				EntryCode:   "ec1",
+				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Verified:    true,
 			},
 		},
 		{
@@ -334,8 +334,8 @@ func TestVerifyEntryCode(t *testing.T) {
 				Expiration: time.Now().Add(time.Hour),
 			},
 			expToken: &Token{
-				EntryCode:         "ec1",
-				EntryCodeVerified: true,
+				EntryCode: "ec1",
+				Verified:  true,
 			},
 		},
 	}
@@ -586,7 +586,7 @@ func TestTokens(t *testing.T) {
 			title:      "success",
 			tokenValue: "t1",
 			savedTokens: []*Token{
-				{EntryCodeVerified: true, Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				{Verified: true, Value: "t1", Expiration: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1"},
 		},
@@ -595,13 +595,13 @@ func TestTokens(t *testing.T) {
 			tokenValue: "t1",
 			savedTokens: []*Token{
 				// Good ones
-				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
-				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
-				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
 				// Bad ones:
-				{EntryCodeVerified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(time.Hour)},
-				{EntryCodeVerified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(-time.Minute)},
-				{EntryCodeVerified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expiration: time.Now().Add(time.Hour)},
+				{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(-time.Minute)},
+				{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expiration: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
@@ -639,7 +639,7 @@ func tokensDiffer(t1, t2 *Token) bool {
 		timesDiffer(t1.Created, t2.Created) ||
 		t1.EntryCode != t2.EntryCode ||
 		clientsDiffer(t1.EntryClient, t2.EntryClient) ||
-		t1.EntryCodeVerified != t2.EntryCodeVerified ||
+		t1.Verified != t2.Verified ||
 		clientsDiffer(t1.Client, t2.Client) ||
 		timesDiffer(t1.Expiration, t2.Expiration) ||
 		t1.Value != t2.Value

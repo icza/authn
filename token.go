@@ -32,8 +32,8 @@ type Token struct {
 	// EntryClient is the client information of the entry code verification.
 	EntryClient *Client `bson:"eclient,omitempty"`
 
-	// EntryCodeVerified tells if this entry code has been verified.
-	EntryCodeVerified bool `bson:"ecodeVerified"`
+	// Verified tells if the token's entry code has been verified.
+	Verified bool `bson:"verified"`
 
 	// Client information of the last access.
 	Client *Client `bson:"client,omitempty"`
