@@ -24,7 +24,7 @@ This is your entry code to {{.SiteName}}:
 
 The entry code is valid for {{printf "%.f" .EntryCodeExpiration.Minutes}} minutes.
 
-If you did not request an entry code, you can ignore this email.
+If you did not request an entry code, you can safely ignore this email.
 
 
 Regards,
