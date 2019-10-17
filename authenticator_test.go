@@ -223,7 +223,7 @@ func TestSendEntryCode(t *testing.T) {
 			c.expToken.EntryCode = token.EntryCode
 			c.expToken.Value = token.Value
 			c.expToken.Created = now
-			c.expToken.Expiration = now.Add(a.cfg.EntryCodeExpiration)
+			c.expToken.Expires = now.Add(a.cfg.EntryCodeExpiration)
 			if c.client != nil {
 				c.expToken.EntryClient.At = now
 			}
@@ -263,13 +263,13 @@ func TestVerifyEntryCode(t *testing.T) {
 		{
 			title:      "expired error",
 			entryCode:  "ec1",
-			savedToken: &Token{EntryCode: "ec1", Expiration: time.Now().Add(-time.Second)},
+			savedToken: &Token{EntryCode: "ec1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
 		},
 		{
 			title:      "validator error",
 			entryCode:  "ec1",
-			savedToken: &Token{EntryCode: "ec1", Expiration: time.Now().Add(time.Minute)},
+			savedToken: &Token{EntryCode: "ec1", Expires: time.Now().Add(time.Minute)},
 			validators: []Validator{validatorErr},
 			expErr:     errValidationTest,
 		},
@@ -278,7 +278,7 @@ func TestVerifyEntryCode(t *testing.T) {
 			entryCode: "ec1",
 			savedToken: &Token{
 				EntryCode:   "ec1",
-				Expiration:  time.Now().Add(time.Hour),
+				Expires:     time.Now().Add(time.Hour),
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
@@ -293,7 +293,7 @@ func TestVerifyEntryCode(t *testing.T) {
 			entryCode: "ec1",
 			savedToken: &Token{
 				EntryCode:   "ec1",
-				Expiration:  time.Now().Add(time.Hour),
+				Expires:     time.Now().Add(time.Hour),
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
@@ -317,7 +317,7 @@ func TestVerifyEntryCode(t *testing.T) {
 			entryCode: "ec1",
 			savedToken: &Token{
 				EntryCode:   "ec1",
-				Expiration:  time.Now().Add(time.Hour),
+				Expires:     time.Now().Add(time.Hour),
 				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			expToken: &Token{
@@ -330,8 +330,8 @@ func TestVerifyEntryCode(t *testing.T) {
 			title:     "success-nil-client-no-saved-client",
 			entryCode: "ec1",
 			savedToken: &Token{
-				EntryCode:  "ec1",
-				Expiration: time.Now().Add(time.Hour),
+				EntryCode: "ec1",
+				Expires:   time.Now().Add(time.Hour),
 			},
 			expToken: &Token{
 				EntryCode: "ec1",
@@ -363,7 +363,7 @@ func TestVerifyEntryCode(t *testing.T) {
 
 			// Verify token:
 			now := time.Now()
-			c.expToken.Expiration = now.Add(a.cfg.TokenExpiration)
+			c.expToken.Expires = now.Add(a.cfg.TokenExpiration)
 			if c.client != nil {
 				c.expToken.EntryClient.At = now
 			}
@@ -395,13 +395,13 @@ func TestVerifyToken(t *testing.T) {
 		{
 			title:      "expired error",
 			tokenValue: "t1",
-			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+			savedToken: &Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
 		},
 		{
 			title:      "validator error",
 			tokenValue: "t1",
-			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(time.Minute)},
+			savedToken: &Token{Value: "t1", Expires: time.Now().Add(time.Minute)},
 			validators: []Validator{validatorErr},
 			expErr:     errValidationTest,
 		},
@@ -409,24 +409,24 @@ func TestVerifyToken(t *testing.T) {
 			title:      "success",
 			tokenValue: "t1",
 			savedToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			expToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			},
 		},
 		{
 			title:      "success",
 			tokenValue: "t1",
 			savedToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			validators: []Validator{
@@ -439,35 +439,35 @@ func TestVerifyToken(t *testing.T) {
 				},
 			},
 			expToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			},
 		},
 		{
 			title:      "success-nil-client",
 			tokenValue: "t1",
 			savedToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			expToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
-				Client:     &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 		},
 		{
 			title:      "success-nil-client-no-saved-client",
 			tokenValue: "t1",
 			savedToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
 			},
 			expToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
 			},
 		},
 	}
@@ -523,15 +523,15 @@ func TestInvalidateToken(t *testing.T) {
 		{
 			title:      "expired error",
 			tokenValue: "t1",
-			savedToken: &Token{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+			savedToken: &Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
 		},
 		{
 			title:      "success",
 			tokenValue: "t1",
 			savedToken: &Token{
-				Value:      "t1",
-				Expiration: time.Now().Add(time.Hour),
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
 			},
 		},
 	}
@@ -578,7 +578,7 @@ func TestTokens(t *testing.T) {
 			title:      "expired error",
 			tokenValue: "t1",
 			savedTokens: []*Token{
-				{Value: "t1", Expiration: time.Now().Add(-time.Second)},
+				{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			},
 			expErr: ErrExpired,
 		},
@@ -586,7 +586,7 @@ func TestTokens(t *testing.T) {
 			title:      "success",
 			tokenValue: "t1",
 			savedTokens: []*Token{
-				{Verified: true, Value: "t1", Expiration: time.Now().Add(time.Hour)},
+				{Verified: true, Value: "t1", Expires: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1"},
 		},
@@ -595,13 +595,13 @@ func TestTokens(t *testing.T) {
 			tokenValue: "t1",
 			savedTokens: []*Token{
 				// Good ones
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expiration: time.Now().Add(time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expiration: time.Now().Add(365 * 24 * time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expiration: time.Now().Add(time.Minute)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expires: time.Now().Add(time.Minute)},
 				// Bad ones:
-				{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expiration: time.Now().Add(time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expiration: time.Now().Add(-time.Minute)},
-				{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expiration: time.Now().Add(time.Hour)},
+				{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expires: time.Now().Add(time.Hour)},
+				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
+				{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
@@ -641,7 +641,7 @@ func tokensDiffer(t1, t2 *Token) bool {
 		clientsDiffer(t1.EntryClient, t2.EntryClient) ||
 		t1.Verified != t2.Verified ||
 		clientsDiffer(t1.Client, t2.Client) ||
-		timesDiffer(t1.Expiration, t2.Expiration) ||
+		timesDiffer(t1.Expires, t2.Expires) ||
 		t1.Value != t2.Value
 }
 

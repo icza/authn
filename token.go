@@ -38,8 +38,8 @@ type Token struct {
 	// Client information of the last access.
 	Client *Client `bson:"client,omitempty"`
 
-	// Expiration tells when this entry code or token expires.
-	Expiration time.Time `bson:"exp"`
+	// Expires tells when this entry code or token expires.
+	Expires time.Time `bson:"exp"`
 
 	// Reusable token value for authentication.
 	Value string `bson:"value"`
@@ -47,5 +47,5 @@ type Token struct {
 
 // Expired tells if this token has expired.
 func (t *Token) Expired() bool {
-	return time.Now().After(t.Expiration)
+	return time.Now().After(t.Expires)
 }

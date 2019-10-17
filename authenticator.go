@@ -217,7 +217,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		Created:      now,
 		EntryCode:    hex.EncodeToString(codeData),
 		EntryClient:  client,
-		Expiration:   now.Add(a.cfg.EntryCodeExpiration),
+		Expires:      now.Add(a.cfg.EntryCodeExpiration),
 		Value:        base64.RawURLEncoding.EncodeToString(valueData),
 	}
 
@@ -316,11 +316,11 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	// Fill new state into token (only returned if update succeeds):
 	token.Verified = true
 	now := time.Now()
-	token.Expiration = now.Add(a.cfg.TokenExpiration)
+	token.Expires = now.Add(a.cfg.TokenExpiration)
 
 	setDoc := bson.M{
 		"verified": true,
-		"exp":      token.Expiration,
+		"exp":      token.Expires,
 	}
 
 	if client != nil {
