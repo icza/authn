@@ -178,11 +178,16 @@ func (a *Authenticator) initDB() {
 	}
 }
 
+// ErrInvalidEmail indicates that the provided email address is invalid.
+var ErrInvalidEmail = errors.New("invalid email")
+
 // SendEntryCode sends a one-time entry code to the given email address.
 // Should be called when a user wants to login.
 //
 // If client is provided, it will be saved as Token.EntryClient, At field filled
 // with current timestamp. If client is nil, EntryClient will not be set.
+//
+// If email is invalid,  ErrInvalidEmail is returned.
 //
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
@@ -190,7 +195,7 @@ func (a *Authenticator) initDB() {
 func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]interface{}) (err error) {
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		return fmt.Errorf("invalid email: %w", err)
+		return ErrInvalidEmail
 	}
 
 	codeData := make([]byte, a.cfg.EntryCodeBytes)
@@ -242,8 +247,8 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		SiteName:            a.cfg.SiteName,
 		EntryCode:           token.EntryCode,
 		EntryCodeExpiration: a.cfg.EntryCodeExpiration,
-		Data:                data,
 		SenderName:          a.cfg.SenderName,
+		Data:                data,
 	}
 	body := &strings.Builder{}
 	if err := a.emailTempl.Execute(body, emailParams); err != nil {

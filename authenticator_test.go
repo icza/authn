@@ -125,12 +125,14 @@ func TestSendEntryCode(t *testing.T) {
 		data         map[string]interface{}
 		expBody      string
 		expErr       bool
+		expErrValue  error
 		expToken     *Token
 	}{
 		{
-			title:  "invalid email",
-			email:  "invalid",
-			expErr: true,
+			title:       "invalid email",
+			email:       "invalid",
+			expErr:      true,
+			expErrValue: ErrInvalidEmail,
 		},
 		{
 			title: "template exec error",
@@ -205,6 +207,9 @@ func TestSendEntryCode(t *testing.T) {
 			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
 		}
 		if err != nil {
+			if c.expErrValue != nil && !errors.Is(err, c.expErrValue) {
+				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.expErrValue, err)
+			}
 			// If an error is returned, we expect no "left-over" tokens:
 			if n, err := a.c.CountDocuments(ctx, bson.M{}); err != nil {
 				t.Errorf("Failed to count tokens: %v", err)
