@@ -7,7 +7,7 @@
 
 Passwordless, email based authentication with MongoDB store.
 
-STATUS: Incomplete, under development.
+STATUS: Working, tested, but API might change (not yet in v1.0.0).
 
 The flow is the following:
 
