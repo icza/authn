@@ -327,7 +327,7 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
 // If a validation error occurs, an error wrapping that is returned early.
-// If a user exists associated wtih the token's email at the time of the verification,
+// If a user exists associated with the token's email at the time of the verification,
 // the user's ID is set as Token.UserID. If no such user exists, no user is created
 // when calling the validators.
 //
