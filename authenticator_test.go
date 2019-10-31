@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -57,6 +59,7 @@ func TestNewAuthenticator(t *testing.T) {
 	defCfg := Config{
 		AuthnDBName:          DefaultAuthnDBName,
 		TokensCollectionName: DefaultTokensCollectionName,
+		UsersCollectionName:  DefaultUsersCollectionName,
 		EntryCodeBytes:       DefaultEntryCodeBytes,
 		EntryCodeExpiration:  DefaultEntryCodeExpiration,
 		TokenValueBytes:      DefaultTokenValueBytes,
@@ -80,6 +83,7 @@ func TestNewAuthenticator(t *testing.T) {
 	cfg := Config{
 		AuthnDBName:          fmt.Sprint("tdb", time.Now().UnixNano()), // random name
 		TokensCollectionName: "tcname",
+		UsersCollectionName:  "ucname",
 		EntryCodeBytes:       100,
 		EntryCodeExpiration:  time.Minute,
 		TokenValueBytes:      101,
@@ -97,18 +101,18 @@ func TestNewAuthenticator(t *testing.T) {
 	}
 }
 
-func initTokensCollection(ctx context.Context, a *Authenticator, t *testing.T, savedTokens ...*Token) {
-	// Clear tokens
-	if _, err := a.c.DeleteMany(ctx, bson.M{}); err != nil {
-		t.Errorf("Failed to clear tokens: %v", err)
+func initCollection(ctx context.Context, c *mongo.Collection, t *testing.T, savedDocs ...interface{}) {
+	// Clear docs
+	if _, err := c.DeleteMany(ctx, bson.M{}); err != nil {
+		t.Errorf("Failed to clear docs: %v", err)
 	}
 
-	for _, savedToken := range savedTokens {
-		if savedToken == nil {
+	for _, doc := range savedDocs {
+		if v := reflect.ValueOf(doc); doc == nil || v.Kind() == reflect.Ptr && v.IsNil() {
 			continue
 		}
-		if _, err := a.c.InsertOne(ctx, savedToken); err != nil {
-			t.Errorf("Failed to insert token: %v", err)
+		if _, err := c.InsertOne(ctx, doc); err != nil {
+			t.Errorf("Failed to insert doc: %v", err)
 		}
 	}
 }
@@ -200,7 +204,7 @@ func TestSendEntryCode(t *testing.T) {
 		}
 		a := NewAuthenticator(client, sendEmail, c.cfg)
 
-		initTokensCollection(ctx, a, t)
+		initCollection(ctx, a.ct, t)
 
 		err := a.SendEntryCode(ctx, c.email, c.client, c.data)
 		if gotErr := err != nil; gotErr != c.expErr {
@@ -211,7 +215,7 @@ func TestSendEntryCode(t *testing.T) {
 				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.expErrValue, err)
 			}
 			// If an error is returned, we expect no "left-over" tokens:
-			if n, err := a.c.CountDocuments(ctx, bson.M{}); err != nil {
+			if n, err := a.ct.CountDocuments(ctx, bson.M{}); err != nil {
 				t.Errorf("Failed to count tokens: %v", err)
 			} else {
 				if n > 0 {
@@ -222,7 +226,7 @@ func TestSendEntryCode(t *testing.T) {
 			// Verify token:
 			now := time.Now()
 			var token *Token
-			if err := a.c.FindOne(ctx, bson.M{}).Decode(&token); err != nil {
+			if err := a.ct.FindOne(ctx, bson.M{}).Decode(&token); err != nil {
 				t.Errorf("[%s] Can't find token: %v", c.title, err)
 			}
 			c.expToken.EntryCode = token.EntryCode
@@ -248,6 +252,7 @@ func TestVerifyEntryCode(t *testing.T) {
 	cases := []struct {
 		title      string
 		savedToken *Token
+		savedUser  *User
 		entryCode  string
 		client     *Client
 		validators []Validator
@@ -291,6 +296,31 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryCode:   "ec1",
 				EntryClient: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 				Verified:    true,
+			},
+		},
+		{
+			title:     "success-existing-user",
+			entryCode: "ec1",
+			savedToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryCode:    "ec1",
+				Expires:      time.Now().Add(time.Hour),
+				EntryClient:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			savedUser: &User{
+				ID:            primitive.ObjectID([12]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2}),
+				LoweredEmails: []string{"as@as.hu"},
+				Created:       time.Now().Add(-time.Hour),
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryCode:    "ec1",
+				EntryClient:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Verified:     true,
+				UserID:       primitive.ObjectID([12]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2}),
 			},
 		},
 		{
@@ -348,7 +378,8 @@ func TestVerifyEntryCode(t *testing.T) {
 	for _, c := range cases {
 		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		initTokensCollection(ctx, a, t, c.savedToken)
+		initCollection(ctx, a.ct, t, c.savedToken)
+		initCollection(ctx, a.cu, t, c.savedUser)
 
 		token, err := a.VerifyEntryCode(ctx, c.entryCode, c.client, c.validators...)
 		if c.expErr != nil {
@@ -358,7 +389,7 @@ func TestVerifyEntryCode(t *testing.T) {
 		} else {
 			// Verify returned and persisted token consistency:
 			var loadedToken *Token
-			if err := a.c.FindOne(ctx, bson.M{"ecode": c.entryCode}).Decode(&loadedToken); err != nil {
+			if err := a.ct.FindOne(ctx, bson.M{"ecode": c.entryCode}).Decode(&loadedToken); err != nil {
 				t.Errorf("[%s] Failed to load token: %v", c.title, err)
 			}
 			if tokensDiffer(loadedToken, token) {
@@ -366,9 +397,30 @@ func TestVerifyEntryCode(t *testing.T) {
 				t.Errorf("[%s]\nExpected: %+v,\ngot:      %+v", c.title, loadedToken.EntryClient, token.EntryClient)
 			}
 
-			// Verify token:
+			// User must exist
+			if token.UserID.IsZero() {
+				t.Errorf("[%s] Expected UserID, got nil", c.title)
+			}
+			var loadedUser *User
+			if err := a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&loadedUser); err != nil {
+				t.Errorf("[%s] Failed to load user: %v", c.title, err)
+			}
+			if loadedUser.ID != token.UserID {
+				t.Errorf("[%s] Expected %v, got %v", c.title, loadedUser.ID, token.UserID)
+			}
 			now := time.Now()
+			if c.savedUser == nil {
+				// User must be new:
+				if timesDiffer(now, loadedUser.Created) {
+					t.Errorf("[%s] Expected %v, got %v", c.title, now, loadedUser.Created)
+				}
+			}
+
+			// Verify token:
 			c.expToken.Expires = now.Add(a.cfg.TokenExpiration)
+			if c.savedUser == nil {
+				c.expToken.UserID = token.UserID
+			}
 			if c.client != nil {
 				c.expToken.EntryClient.At = now
 			}
@@ -480,7 +532,7 @@ func TestVerifyToken(t *testing.T) {
 	for _, c := range cases {
 		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		initTokensCollection(ctx, a, t, c.savedToken)
+		initCollection(ctx, a.ct, t, c.savedToken)
 
 		token, err := a.VerifyToken(ctx, c.tokenValue, c.client, c.validators...)
 		if c.expErr != nil {
@@ -490,7 +542,7 @@ func TestVerifyToken(t *testing.T) {
 		} else {
 			// Verify returned and persisted token consistency:
 			var loadedToken *Token
-			if err := a.c.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
+			if err := a.ct.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
 				t.Errorf("[%s] Failed to load token: %v", c.title, err)
 			}
 			if tokensDiffer(loadedToken, token) {
@@ -545,7 +597,7 @@ func TestInvalidateToken(t *testing.T) {
 		sendEmail := func(ctx context.Context, to, body string) error { return nil }
 		a := NewAuthenticator(client, sendEmail, Config{})
 
-		initTokensCollection(ctx, a, t, c.savedToken)
+		initCollection(ctx, a.ct, t, c.savedToken)
 
 		err := a.InvalidateToken(ctx, c.tokenValue)
 		if c.expErr != nil {
@@ -554,7 +606,7 @@ func TestInvalidateToken(t *testing.T) {
 			}
 		} else {
 			var loadedToken *Token
-			if err := a.c.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
+			if err := a.ct.FindOne(ctx, bson.M{"value": c.tokenValue}).Decode(&loadedToken); err != nil {
 				t.Errorf("[%s] Failed to load token: %v", c.title, err)
 			}
 			if !loadedToken.Expired() {
@@ -569,7 +621,7 @@ func TestTokens(t *testing.T) {
 
 	cases := []struct {
 		title          string
-		savedTokens    []*Token
+		savedTokens    []interface{}
 		tokenValue     string
 		expErr         error
 		expTokenValues []string
@@ -582,31 +634,31 @@ func TestTokens(t *testing.T) {
 		{
 			title:      "expired error",
 			tokenValue: "t1",
-			savedTokens: []*Token{
-				{Value: "t1", Expires: time.Now().Add(-time.Second)},
+			savedTokens: []interface{}{
+				&Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			},
 			expErr: ErrExpired,
 		},
 		{
 			title:      "success",
 			tokenValue: "t1",
-			savedTokens: []*Token{
-				{Verified: true, Value: "t1", Expires: time.Now().Add(time.Hour)},
+			savedTokens: []interface{}{
+				&Token{Verified: true, Value: "t1", Expires: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1"},
 		},
 		{
 			title:      "success-multiple-tokens",
 			tokenValue: "t1",
-			savedTokens: []*Token{
+			savedTokens: []interface{}{
 				// Good ones
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expires: time.Now().Add(time.Minute)},
+				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
+				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expires: time.Now().Add(time.Minute)},
 				// Bad ones:
-				{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expires: time.Now().Add(time.Hour)},
-				{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
-				{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
+				&Token{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
@@ -615,7 +667,7 @@ func TestTokens(t *testing.T) {
 	for _, c := range cases {
 		a := NewAuthenticator(client, emptySendEmail, Config{})
 
-		initTokensCollection(ctx, a, t, c.savedTokens...)
+		initCollection(ctx, a.ct, t, c.savedTokens...)
 
 		tokens, err := a.Tokens(ctx, c.tokenValue)
 		if c.expErr != nil {
@@ -647,7 +699,8 @@ func tokensDiffer(t1, t2 *Token) bool {
 		t1.Verified != t2.Verified ||
 		clientsDiffer(t1.Client, t2.Client) ||
 		timesDiffer(t1.Expires, t2.Expires) ||
-		t1.Value != t2.Value
+		t1.Value != t2.Value ||
+		t1.UserID != t2.UserID
 }
 
 // clientsDiffer compares to clients "deeply", comparing timestamps using diffTime().

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -24,6 +25,9 @@ const (
 
 	// DefaultTokensCollectionName is the default for Config.TokensCollectionName.
 	DefaultTokensCollectionName = "tokens"
+
+	// DefaultUsersCollectionName is the default for Config.UsersCollectionName.
+	DefaultUsersCollectionName = "users"
 
 	// DefaultEntryCodeBytes is the default for Config.EntryCodeBytes.
 	DefaultEntryCodeBytes = 8
@@ -47,6 +51,10 @@ type Config struct {
 	// TokensCollectionName is the name of the database collection used by the
 	// Authenticator to store tokens.
 	TokensCollectionName string
+
+	// UsersCollectionName is the name of the database collection used by the
+	// Authenticator to store users.
+	UsersCollectionName string
 
 	// EntryCodeBytes tells how many bytes to use for entry codes.
 	// The actual entry code is a hex string, will be twice as many hex digits.
@@ -91,8 +99,11 @@ type Authenticator struct {
 	// emailTempl generates the email body for sending out entry codes.
 	emailTempl *template.Template
 
-	// c is the token collection
-	c *mongo.Collection
+	// ct is the tokens collection
+	ct *mongo.Collection
+
+	// cu is the users collection
+	cu *mongo.Collection
 }
 
 // EmailSenderFunc is the type of the function used to send out emails.
@@ -120,6 +131,9 @@ func NewAuthenticator(
 	if cfg.TokensCollectionName == "" {
 		cfg.TokensCollectionName = DefaultTokensCollectionName
 	}
+	if cfg.UsersCollectionName == "" {
+		cfg.UsersCollectionName = DefaultUsersCollectionName
+	}
 	if cfg.EntryCodeBytes == 0 {
 		cfg.EntryCodeBytes = DefaultEntryCodeBytes
 	}
@@ -136,12 +150,15 @@ func NewAuthenticator(
 		cfg.EmailTemplate = DefaultEmailTemplate
 	}
 
+	db := mongoClient.Database(cfg.AuthnDBName)
+
 	a := &Authenticator{
 		mongoClient: mongoClient,
 		sendEmail:   sendEmail,
 		cfg:         cfg,
 		emailTempl:  template.Must(template.New("").Parse(cfg.EmailTemplate)),
-		c:           mongoClient.Database(cfg.AuthnDBName).Collection(cfg.TokensCollectionName),
+		ct:          db.Collection(cfg.TokensCollectionName),
+		cu:          db.Collection(cfg.UsersCollectionName),
 	}
 
 	a.initDB()
@@ -152,7 +169,7 @@ func NewAuthenticator(
 // initDB initializes the authn database. This includes:
 //   - ensure required indices exist
 func (a *Authenticator) initDB() {
-	_, err := a.c.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := a.ct.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
 		{
 			Keys: bson.D{
 				{Key: "ecode", Value: 1},
@@ -171,6 +188,18 @@ func (a *Authenticator) initDB() {
 				{Key: "verified", Value: 1},
 				{Key: "exp", Value: 1},
 			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to create authn db indices: %v", err)
+	}
+
+	_, err = a.cu.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "lemails", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
 		},
 	})
 	if err != nil {
@@ -203,7 +232,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		return fmt.Errorf("failed to read random data: %w", err)
 	}
 	// Technically value is not yet required at this phase, but it's unique in DB
-	// so we must generate it too (else insertion would fail).
+	// so we must generate it here (else insertion would fail).
 	valueData := make([]byte, a.cfg.TokenValueBytes)
 	if _, err := rand.Read(valueData); err != nil {
 		return fmt.Errorf("failed to read random data: %w", err)
@@ -226,7 +255,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 		Value:        base64.RawURLEncoding.EncodeToString(valueData),
 	}
 
-	if _, err := a.c.InsertOne(ctx, token); err != nil {
+	if _, err := a.ct.InsertOne(ctx, token); err != nil {
 		return fmt.Errorf("failed to insert token: %w", err)
 	}
 
@@ -235,7 +264,7 @@ func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client 
 	defer func() {
 		if err != nil {
 			// Remove inserted token:
-			if _, err2 := a.c.DeleteOne(ctx, bson.M{"ecode": token.EntryCode}); err2 != nil {
+			if _, err2 := a.ct.DeleteOne(ctx, bson.M{"ecode": token.EntryCode}); err2 != nil {
 				// We can't do anything about it.
 				log.Printf("Can't remove token with entry code %q: %v", token.EntryCode, err2)
 			}
@@ -293,13 +322,16 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // If the entry code has expired, ErrExpired is returned.
 //
 // An entry code can only be verified once. If the entry code is known
-// but has been verified before, ErrVerified is returned.
+// but has been verified before, ErrAlreadyVerified is returned.
 //
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
 // If a validation error occurs, an error wrapping that is returned early.
+//
+// If there is an existing user with the tokens email, that user's ID is set
+// as Token.UserID, else a new user is created automatically.
 func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
-	if err = a.c.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
+	if err = a.ct.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUnknown
 		}
@@ -318,13 +350,34 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 		}
 	}
 
+	// Lookup user:
+	var user *User
+	if err = a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&user); err != nil {
+		if err != mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("failed to load user: %w", err)
+		}
+	}
+	if user == nil {
+		// Create new user:
+		user = &User{
+			ID:            primitive.NewObjectID(),
+			LoweredEmails: []string{token.LoweredEmail},
+			Created:       time.Now(),
+		}
+		if _, err := a.cu.InsertOne(ctx, user); err != nil {
+			return nil, fmt.Errorf("failed to insert user: %w", err)
+		}
+	}
+
 	// Fill new state into token (only returned if update succeeds):
 	token.Verified = true
+	token.UserID = user.ID
 	now := time.Now()
 	token.Expires = now.Add(a.cfg.TokenExpiration)
 
 	setDoc := bson.M{
 		"verified": true,
+		"userID":   token.UserID,
 		"exp":      token.Expires,
 	}
 
@@ -336,7 +389,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 
 	// Use 2-phase update:
 	var updateResult *mongo.UpdateResult
-	updateResult, err = a.c.UpdateOne(ctx,
+	updateResult, err = a.ct.UpdateOne(ctx,
 		bson.M{
 			"ecode":    code,
 			"verified": false,
@@ -369,7 +422,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 // If a validation error occurs, an error wrapping that is returned early.
 func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
 	filter := bson.M{"value": tokenValue}
-	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
+	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUnknown
 		}
@@ -391,7 +444,7 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 		token.Client = client
 		token.Client.At = now
 
-		_, err = a.c.UpdateOne(ctx,
+		_, err = a.ct.UpdateOne(ctx,
 			filter,
 			bson.M{
 				"$set": bson.M{
@@ -416,7 +469,7 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) (err error) {
 	filter := bson.M{"value": tokenValue}
 	var token *Token
-	if err = a.c.FindOne(ctx, filter).Decode(&token); err != nil {
+	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return ErrUnknown
 		}
@@ -427,7 +480,7 @@ func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) 
 	}
 
 	// Update token's expiration to make it expired.
-	_, err = a.c.UpdateOne(ctx,
+	_, err = a.ct.UpdateOne(ctx,
 		filter,
 		bson.M{
 			"$set": bson.M{
@@ -449,7 +502,7 @@ func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) 
 // If the token has expired (or has already been invalidated), ErrExpired is returned.
 func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens []*Token, err error) {
 	var token *Token
-	if err = a.c.FindOne(ctx, bson.M{"value": tokenValue}).Decode(&token); err != nil {
+	if err = a.ct.FindOne(ctx, bson.M{"value": tokenValue}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUnknown
 		}
@@ -465,7 +518,7 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 		"verified": true,
 	}
 
-	curs, err := a.c.Find(ctx, filter)
+	curs, err := a.ct.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list token: %w", err)
 	}

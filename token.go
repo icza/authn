@@ -1,6 +1,10 @@
 package authn
 
-import "time"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 // Client holds some information about the client.
 type Client struct {
@@ -16,6 +20,9 @@ type Client struct {
 
 // Token represents a token which authenticates users.
 type Token struct {
+	// ID of the token.
+	ID primitive.ObjectID `bson:"_id,omitempty"`
+
 	// Case-sensitive email of the owner of the token.
 	Email string `bson:"email"`
 
@@ -34,6 +41,9 @@ type Token struct {
 
 	// Verified tells if the token's entry code has been verified.
 	Verified bool `bson:"verified"`
+
+	// UserID is the ID of the owner of the token.
+	UserID primitive.ObjectID `bson:"userID"`
 
 	// Client information of the last access.
 	Client *Client `bson:"client,omitempty"`
