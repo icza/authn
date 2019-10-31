@@ -19,6 +19,12 @@ The flow is the following:
   5. Authenticity of a user can be verified by `Authenticator.VerifyToken()`.
   6. The user can be logged out by calling `Authenticator.InvalidateToken()`.
 
+The package automatically manages user identities. When an entry code verification
+passes, a user identity (User) is created if one does not yet exist for the email.
+This user identity (`UserID`) is attached to and returned with all tokens.
+A user may have multiple emails, and emails can be changed
+(`Authenticator.SetUserEmails()`) without affecting the user identity.
+
 A user may have multiple valid tokens (multiple sessions).
 `Authenticator.InvalidateToken()` only invalidates the given token.
 `Authenticator.Tokens()` may be used to query all valid sessions of a user.
