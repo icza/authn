@@ -133,13 +133,13 @@ func TestSendEntryCode(t *testing.T) {
 		expToken     *Token
 	}{
 		{
-			title:       "invalid email",
+			title:       "invalid-email",
 			email:       "invalid",
 			expErr:      true,
 			expErrValue: ErrInvalidEmail,
 		},
 		{
-			title: "template exec error",
+			title: "template-exec-error",
 			email: "as@as.hu",
 			cfg: Config{
 				EmailTemplate: "{{.Invalid}}",
@@ -262,24 +262,24 @@ func TestVerifyEntryCode(t *testing.T) {
 		expToken   *Token
 	}{
 		{
-			title:     "unknown entry code error",
+			title:     "unknown-entry-code-error",
 			entryCode: "unknown",
 			expErr:    ErrUnknown,
 		},
 		{
-			title:      "already verified error",
+			title:      "already-verified-error",
 			entryCode:  "ec1",
 			savedToken: &Token{EntryCode: "ec1", Verified: true},
 			expErr:     ErrAlreadyVerified,
 		},
 		{
-			title:      "expired error",
+			title:      "expired-error",
 			entryCode:  "ec1",
 			savedToken: &Token{EntryCode: "ec1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
 		},
 		{
-			title:      "validator error",
+			title:      "validator-error",
 			entryCode:  "ec1",
 			savedToken: &Token{EntryCode: "ec1", Expires: time.Now().Add(time.Minute)},
 			validators: []Validator{validatorErr},
@@ -457,18 +457,18 @@ func TestVerifyToken(t *testing.T) {
 		expToken   *Token
 	}{
 		{
-			title:      "unknown token value error",
+			title:      "unknown-token-value-error",
 			tokenValue: "unknown",
 			expErr:     ErrUnknown,
 		},
 		{
-			title:      "expired error",
+			title:      "expired-error",
 			tokenValue: "t1",
 			savedToken: &Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
 		},
 		{
-			title:      "validator error",
+			title:      "validator-error",
 			tokenValue: "t1",
 			savedToken: &Token{Value: "t1", Expires: time.Now().Add(time.Minute)},
 			validators: []Validator{validatorErr},
@@ -490,7 +490,7 @@ func TestVerifyToken(t *testing.T) {
 			},
 		},
 		{
-			title:      "success",
+			title:      "success-validator",
 			tokenValue: "t1",
 			savedToken: &Token{
 				Value:   "t1",
@@ -585,12 +585,12 @@ func TestInvalidateToken(t *testing.T) {
 		expErr     error
 	}{
 		{
-			title:      "unknown token value error",
+			title:      "unknown-token-value-error",
 			tokenValue: "unknown",
 			expErr:     ErrUnknown,
 		},
 		{
-			title:      "expired error",
+			title:      "expired-error",
 			tokenValue: "t1",
 			savedToken: &Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
 			expErr:     ErrExpired,
@@ -641,12 +641,12 @@ func TestTokens(t *testing.T) {
 		expTokenValues []string
 	}{
 		{
-			title:      "unknown token value error",
+			title:      "unknown-token-value-error",
 			tokenValue: "unknown",
 			expErr:     ErrUnknown,
 		},
 		{
-			title:      "expired error",
+			title:      "expired-error",
 			tokenValue: "t1",
 			savedTokens: []interface{}{
 				&Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
@@ -701,6 +701,69 @@ func TestTokens(t *testing.T) {
 				if tokens[i].Value != expTokenValue {
 					t.Errorf("[%s] Expected: %+v, got: %+v", c.title, expTokenValue, tokens[i].Value)
 				}
+			}
+		}
+	}
+}
+
+func TestGetUser(t *testing.T) {
+	ctx := context.Background()
+
+	uid1, uid2, uid3 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2}), primitive.ObjectID([12]byte{3})
+
+	cases := []struct {
+		title      string
+		savedUsers []interface{}
+		userID     primitive.ObjectID
+		expErr     bool
+		expUser    *User
+	}{
+		{
+			title:  "unknown-user-ID",
+			expErr: true,
+		},
+		{
+			title: "unknown-user-ID-2",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+			},
+			userID: uid3,
+			expErr: true,
+		},
+		{
+			title: "success",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+			},
+			userID:  uid1,
+			expUser: &User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+		},
+		{
+			title: "success-2",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+			},
+			userID:  uid2,
+			expUser: &User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+		},
+	}
+
+	for _, c := range cases {
+		a := NewAuthenticator(client, emptySendEmail, Config{})
+
+		initCollection(ctx, a.cu, t, c.savedUsers...)
+
+		user, err := a.GetUser(ctx, c.userID)
+		if gotErr := err != nil; gotErr != c.expErr {
+			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
+		}
+
+		if err == nil {
+			if user.ID != c.expUser.ID {
+				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.expUser.ID, user.ID)
 			}
 		}
 	}

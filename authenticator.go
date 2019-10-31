@@ -537,3 +537,9 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 	// All good:
 	return
 }
+
+// GetUser returns the user document for the given ID.
+func (a *Authenticator) GetUser(ctx context.Context, userID primitive.ObjectID) (user *User, err error) {
+	err = a.cu.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	return
+}
