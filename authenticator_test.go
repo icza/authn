@@ -249,6 +249,8 @@ func TestSendEntryCode(t *testing.T) {
 func TestVerifyEntryCode(t *testing.T) {
 	ctx := context.Background()
 
+	uid := primitive.ObjectID([12]byte{1})
+
 	cases := []struct {
 		title      string
 		savedToken *Token
@@ -309,7 +311,7 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryClient:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
 			savedUser: &User{
-				ID:            primitive.ObjectID([12]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2}),
+				ID:            uid,
 				LoweredEmails: []string{"as@as.hu"},
 				Created:       time.Now().Add(-time.Hour),
 			},
@@ -320,7 +322,7 @@ func TestVerifyEntryCode(t *testing.T) {
 				EntryCode:    "ec1",
 				EntryClient:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 				Verified:     true,
-				UserID:       primitive.ObjectID([12]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2}),
+				UserID:       uid,
 			},
 		},
 		{
@@ -619,6 +621,8 @@ func TestInvalidateToken(t *testing.T) {
 func TestTokens(t *testing.T) {
 	ctx := context.Background()
 
+	uid1, uid2 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2})
+
 	cases := []struct {
 		title          string
 		savedTokens    []interface{}
@@ -652,13 +656,13 @@ func TestTokens(t *testing.T) {
 			tokenValue: "t1",
 			savedTokens: []interface{}{
 				// Good ones
-				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
-				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
-				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e3", Value: "t3", Expires: time.Now().Add(time.Minute)},
+				&Token{Verified: true, UserID: uid1, EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: true, UserID: uid1, EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
+				&Token{Verified: true, UserID: uid1, EntryCode: "e3", Value: "t3", Expires: time.Now().Add(time.Minute)},
 				// Bad ones:
-				&Token{Verified: false, LoweredEmail: "as@as.com", EntryCode: "e4", Value: "t4", Expires: time.Now().Add(time.Hour)},
-				&Token{Verified: true, LoweredEmail: "as@as.com", EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
-				&Token{Verified: true, LoweredEmail: "bs@as.com", EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: false, UserID: uid1, EntryCode: "e4", Value: "t4", Expires: time.Now().Add(time.Hour)},
+				&Token{Verified: true, UserID: uid1, EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
+				&Token{Verified: true, UserID: uid2, EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
 			},
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
@@ -676,6 +680,9 @@ func TestTokens(t *testing.T) {
 			}
 		} else {
 			// Verify expected token set:
+			if len(tokens) != len(c.expTokenValues) {
+				t.Errorf("[%s] Expected: %d, got: %d", c.title, len(tokens), len(c.expTokenValues))
+			}
 			sort.Strings(c.expTokenValues)
 			sort.Slice(tokens, func(i int, j int) bool {
 				return tokens[i].Value < tokens[j].Value

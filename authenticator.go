@@ -184,7 +184,7 @@ func (a *Authenticator) initDB() {
 		},
 		{
 			Keys: bson.D{
-				{Key: "lemail", Value: 1},
+				{Key: "userID", Value: 1},
 				{Key: "verified", Value: 1},
 				{Key: "exp", Value: 1},
 			},
@@ -513,7 +513,7 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 	}
 
 	filter := bson.M{
-		"lemail":   token.LoweredEmail,
+		"userID":   token.UserID,
 		"exp":      bson.M{"$gt": time.Now()},
 		"verified": true,
 	}
