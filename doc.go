@@ -15,7 +15,7 @@ The Authenticator automatically manages user identities. When an entry code veri
 passes, a user identity (User) is created if one does not yet exist for the email.
 This user identity (UserID) is attached to and returned with all tokens.
 A user may have multiple emails, and emails can be changed
-(Authenticator.SetUserEmails()) without affecting the user identity.
+(Authenticator.SetUserEmails()) without affecting the user's identity.
 
 A user may have multiple valid tokens (multiple sessions).
 Authenticator.InvalidateToken() only invalidates the given token.
