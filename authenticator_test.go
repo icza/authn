@@ -329,24 +329,34 @@ func TestVerifyEntryCode(t *testing.T) {
 			title:     "success-validators",
 			entryCode: "ec1",
 			savedToken: &Token{
-				EntryCode:   "ec1",
-				Expires:     time.Now().Add(time.Hour),
-				EntryClient: &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryCode:    "ec1",
+				Expires:      time.Now().Add(time.Hour),
+				EntryClient:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+			},
+			savedUser: &User{
+				ID:            uid,
+				LoweredEmails: []string{"as@as.hu"},
+				Created:       time.Now().Add(-time.Hour),
 			},
 			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
 			validators: []Validator{
 				validatorOK,
 				func(ctx context.Context, token *Token, client *Client) error {
-					if token.EntryClient.UserAgent != "ua" || client.UserAgent != "ua2" {
+					if token.EntryClient.UserAgent != "ua" || client.UserAgent != "ua2" || token.UserID != uid {
 						return fmt.Errorf("unexpected validator params")
 					}
 					return nil
 				},
 			},
 			expToken: &Token{
-				EntryCode:   "ec1",
-				EntryClient: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
-				Verified:    true,
+				Email:        "As@as.hu",
+				LoweredEmail: "as@as.hu",
+				EntryCode:    "ec1",
+				EntryClient:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Verified:     true,
+				UserID:       uid,
 			},
 		},
 		{

@@ -327,9 +327,13 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
 // If a validation error occurs, an error wrapping that is returned early.
+// If a user exists associated wtih the token's email at the time of the verification,
+// the user's ID is set as Token.UserID. If no such user exists, no user is created
+// when calling the validators.
 //
-// If there is an existing user with the tokens email, that user's ID is set
-// as Token.UserID, else a new user is created automatically.
+// If validation passes and no user exists associated with the token's email address,
+// a new user is created automatically, and its ID set as Token.UserID.
+// Changes to the user's email later on will not affect Token.UserID.
 func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
 	if err = a.ct.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -344,19 +348,23 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 		return nil, ErrExpired
 	}
 
-	for _, validator := range validators {
-		if err := validator(ctx, token, client); err != nil {
-			return nil, fmt.Errorf("validation failed: %w", err)
-		}
-	}
-
-	// Lookup user:
+	// Lookup user (we do this so validators can use this information if they want to):
 	var user *User
 	if err = a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&user); err != nil {
 		if err != mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("failed to load user: %w", err)
 		}
 	}
+	if user != nil {
+		token.UserID = user.ID
+	}
+
+	for _, validator := range validators {
+		if err := validator(ctx, token, client); err != nil {
+			return nil, fmt.Errorf("validation failed: %w", err)
+		}
+	}
+
 	if user == nil {
 		// Create new user:
 		user = &User{
@@ -367,11 +375,11 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 		if _, err := a.cu.InsertOne(ctx, user); err != nil {
 			return nil, fmt.Errorf("failed to insert user: %w", err)
 		}
+		token.UserID = user.ID
 	}
 
 	// Fill new state into token (only returned if update succeeds):
 	token.Verified = true
-	token.UserID = user.ID
 	now := time.Now()
 	token.Expires = now.Add(a.cfg.TokenExpiration)
 
