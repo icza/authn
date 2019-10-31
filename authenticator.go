@@ -543,3 +543,23 @@ func (a *Authenticator) GetUser(ctx context.Context, userID primitive.ObjectID) 
 	err = a.cu.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
 	return
 }
+
+// SetUserEmails sets the assigned (lowercased) emails of a user.
+//
+// Emails must be unique across all users. Attempting to set an email that is
+// already associated to another user will result in an error.
+func (a *Authenticator) SetUserEmails(ctx context.Context, userID primitive.ObjectID, loweredEmails []string) (err error) {
+	var updateResult *mongo.UpdateResult
+	updateResult, err = a.cu.UpdateOne(ctx,
+		bson.M{"_id": userID},
+		bson.M{"$set": bson.M{"lemails": loweredEmails}},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+	if updateResult.ModifiedCount == 0 {
+		return ErrUnknown
+	}
+
+	return
+}

@@ -769,6 +769,82 @@ func TestGetUser(t *testing.T) {
 	}
 }
 
+func TestSetUserEmails(t *testing.T) {
+	ctx := context.Background()
+
+	uid1, uid2 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2})
+
+	cases := []struct {
+		title         string
+		savedUsers    []interface{}
+		userID        primitive.ObjectID
+		loweredEmails []string
+		expErr        bool
+	}{
+		{
+			title:  "unknown-user-ID",
+			userID: uid1,
+			expErr: true,
+		},
+		{
+			title: "unknown-user-ID-2",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+			},
+			userID: uid2,
+			expErr: true,
+		},
+		{
+			title: "error-existing-email",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+			},
+			userID:        uid1,
+			loweredEmails: []string{"bs@as.hu"},
+			expErr:        true,
+		},
+		{
+			title: "success",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+			},
+			userID:        uid1,
+			loweredEmails: []string{"bs@as.hu"},
+		},
+		{
+			title: "success-2",
+			savedUsers: []interface{}{
+				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+			},
+			userID:        uid1,
+			loweredEmails: []string{"bs@as.hu", "as@as.hu"},
+		},
+	}
+
+	for _, c := range cases {
+		a := NewAuthenticator(client, emptySendEmail, Config{})
+
+		initCollection(ctx, a.cu, t, c.savedUsers...)
+
+		err := a.SetUserEmails(ctx, c.userID, c.loweredEmails)
+		if gotErr := err != nil; gotErr != c.expErr {
+			t.Errorf("[%s] Expected err: %v, got: %v", c.title, c.expErr, gotErr)
+		}
+
+		if err == nil {
+			// Verify
+			var loadedUser *User
+			if err := a.cu.FindOne(ctx, bson.M{"_id": c.userID}).Decode(&loadedUser); err != nil {
+				t.Errorf("[%s] Failed to load user: %v", c.title, err)
+			}
+			if !reflect.DeepEqual(c.loweredEmails, loadedUser.LoweredEmails) {
+				t.Errorf("[%s] Expected %v, got %v", c.title, c.loweredEmails, loadedUser.LoweredEmails)
+			}
+		}
+	}
+}
+
 // tokensDiffer compares to tokens "deeply", comparing timestamps using diffTime().
 func tokensDiffer(t1, t2 *Token) bool {
 	return t1.Email != t2.Email ||
