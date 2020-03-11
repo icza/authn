@@ -420,7 +420,8 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 // Should be called to verify the authenticity of a logged in user.
 //
 // If client is provided, it will be saved as Token.Client, At field filled
-// with current timestamp. If client is nil, Client will not be updated.
+// with current timestamp, and Token.Used will also be incremented.
+// If client is nil, Client will not be updated.
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired, ErrExpired is returned.
@@ -458,11 +459,15 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 				"$set": bson.M{
 					"client": token.Client,
 				},
+				"$inc": bson.M{
+					"used": 1,
+				},
 			},
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update token: %w", err)
 		}
+		token.Used++
 	}
 
 	// All good:

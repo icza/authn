@@ -487,6 +487,7 @@ func TestVerifyToken(t *testing.T) {
 				Value:   "t1",
 				Expires: time.Now().Add(time.Hour),
 				Client:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Used:    1,
 			},
 		},
 		{
@@ -511,6 +512,7 @@ func TestVerifyToken(t *testing.T) {
 				Value:   "t1",
 				Expires: time.Now().Add(time.Hour),
 				Client:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Used:    1,
 			},
 		},
 		{
@@ -537,6 +539,39 @@ func TestVerifyToken(t *testing.T) {
 			expToken: &Token{
 				Value:   "t1",
 				Expires: time.Now().Add(time.Hour),
+			},
+		},
+		{
+			title:      "success-existing-used",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Used:    10,
+			},
+			client: &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+			expToken: &Token{
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua2", IP: "2.2.3.4"},
+				Used:    11,
+			},
+		},
+		{
+			title:      "success-nil-client-existing-used",
+			tokenValue: "t1",
+			savedToken: &Token{
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Used:    10,
+			},
+			expToken: &Token{
+				Value:   "t1",
+				Expires: time.Now().Add(time.Hour),
+				Client:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
+				Used:    10,
 			},
 		},
 	}
@@ -856,7 +891,8 @@ func tokensDiffer(t1, t2 *Token) bool {
 		clientsDiffer(t1.Client, t2.Client) ||
 		timesDiffer(t1.Expires, t2.Expires) ||
 		t1.Value != t2.Value ||
-		t1.UserID != t2.UserID
+		t1.UserID != t2.UserID ||
+		t1.Used != t2.Used
 }
 
 // clientsDiffer compares to clients "deeply", comparing timestamps using diffTime().

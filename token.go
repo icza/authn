@@ -53,6 +53,11 @@ type Token struct {
 
 	// Reusable token value for authentication.
 	Value string `bson:"value"`
+
+	// Used tells how many times this token was used.
+	// A token is used when it is verified, and only
+	// if Client information is provided.
+	Used int `bson:"used,omitempty"`
 }
 
 // Expired tells if this token has expired.
