@@ -16,6 +16,9 @@ type Client struct {
 
 	// At tells when the token was accessed.
 	At time.Time `bson:"at"`
+
+	// Data may hold arbitrary data.
+	Data map[string]interface{} `bson:"data,omitempty"`
 }
 
 // Token represents a token which authenticates users.
