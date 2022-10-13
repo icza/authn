@@ -555,8 +555,8 @@ func (a *Authenticator) GetUser(ctx context.Context, userID primitive.ObjectID) 
 // already associated to another user will result in an error.
 func (a *Authenticator) SetUserEmails(ctx context.Context, userID primitive.ObjectID, loweredEmails []string) (err error) {
 	var updateResult *mongo.UpdateResult
-	updateResult, err = a.cu.UpdateOne(ctx,
-		bson.M{"_id": userID},
+	updateResult, err = a.cu.UpdateByID(ctx,
+		userID,
 		bson.M{"$set": bson.M{"lemails": loweredEmails}},
 	)
 	if err != nil {
