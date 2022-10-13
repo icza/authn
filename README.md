@@ -27,7 +27,8 @@ A user may have multiple emails, and emails can be changed
 
 A user may have multiple valid tokens (multiple sessions).
 `Authenticator.InvalidateToken()` only invalidates the given token.
-`Authenticator.Tokens()` may be used to query all valid sessions of a user.
+`Authenticator.Tokens()` may be used to query all valid sessions of a user by a token value,
+or `Authenticator.UserTokens()` by user ID.
 
 `Authenticator` uses MongoDB as the persistent store, accessed via the official
 [mongo-go](https://github.com/mongodb/mongo-go-driver) driver.
