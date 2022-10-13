@@ -101,7 +101,7 @@ func TestNewAuthenticator(t *testing.T) {
 	}
 }
 
-func initCollection(ctx context.Context, c *mongo.Collection, t *testing.T, savedDocs ...interface{}) {
+func initCollection(ctx context.Context, c *mongo.Collection, t *testing.T, savedDocs ...any) {
 	// Clear docs
 	if _, err := c.DeleteMany(ctx, bson.M{}); err != nil {
 		t.Errorf("Failed to clear docs: %v", err)
@@ -126,7 +126,7 @@ func TestSendEntryCode(t *testing.T) {
 		cfg          Config
 		sendEmailErr error
 		client       *Client
-		data         map[string]interface{}
+		data         map[string]any
 		expBody      string
 		expErr       bool
 		expErrValue  error
@@ -186,7 +186,7 @@ func TestSendEntryCode(t *testing.T) {
 			cfg: Config{
 				EmailTemplate: "{{.Data.Seven}}",
 			},
-			data:    map[string]interface{}{"Seven": 7},
+			data:    map[string]any{"Seven": 7},
 			expBody: "7",
 			expToken: &Token{
 				Email:        "As@as.hu",
@@ -670,8 +670,9 @@ func TestTokens(t *testing.T) {
 
 	cases := []struct {
 		title          string
-		savedTokens    []interface{}
+		savedTokens    []any
 		tokenValue     string
+		userID         primitive.ObjectID
 		expErr         error
 		expTokenValues []string
 	}{
@@ -683,23 +684,25 @@ func TestTokens(t *testing.T) {
 		{
 			title:      "expired-error",
 			tokenValue: "t1",
-			savedTokens: []interface{}{
-				&Token{Value: "t1", Expires: time.Now().Add(-time.Second)},
+			savedTokens: []any{
+				&Token{Value: "t1", UserID: uid1, Expires: time.Now().Add(-time.Second)},
 			},
+			userID: uid1,
 			expErr: ErrExpired,
 		},
 		{
 			title:      "success",
 			tokenValue: "t1",
-			savedTokens: []interface{}{
-				&Token{Verified: true, Value: "t1", Expires: time.Now().Add(time.Hour)},
+			savedTokens: []any{
+				&Token{Verified: true, UserID: uid1, Value: "t1", Expires: time.Now().Add(time.Hour)},
 			},
+			userID:         uid1,
 			expTokenValues: []string{"t1"},
 		},
 		{
 			title:      "success-multiple-tokens",
 			tokenValue: "t1",
-			savedTokens: []interface{}{
+			savedTokens: []any{
 				// Good ones
 				&Token{Verified: true, UserID: uid1, EntryCode: "e1", Value: "t1", Expires: time.Now().Add(time.Hour)},
 				&Token{Verified: true, UserID: uid1, EntryCode: "e2", Value: "t2", Expires: time.Now().Add(365 * 24 * time.Hour)},
@@ -709,6 +712,7 @@ func TestTokens(t *testing.T) {
 				&Token{Verified: true, UserID: uid1, EntryCode: "e5", Value: "t5", Expires: time.Now().Add(-time.Minute)},
 				&Token{Verified: true, UserID: uid2, EntryCode: "e6", Value: "t6", Expires: time.Now().Add(time.Hour)},
 			},
+			userID:         uid1,
 			expTokenValues: []string{"t1", "t2", "t3"},
 		},
 	}
@@ -719,12 +723,8 @@ func TestTokens(t *testing.T) {
 		initCollection(ctx, a.ct, t, c.savedTokens...)
 
 		tokens, err := a.Tokens(ctx, c.tokenValue)
-		if c.expErr != nil {
-			if !errors.Is(err, c.expErr) {
-				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
-			}
-		} else {
-			// Verify expected token set:
+
+		verifyTokens := func() {
 			if len(tokens) != len(c.expTokenValues) {
 				t.Errorf("[%s] Expected: %d, got: %d", c.title, len(tokens), len(c.expTokenValues))
 			}
@@ -738,6 +738,23 @@ func TestTokens(t *testing.T) {
 				}
 			}
 		}
+
+		if c.expErr != nil {
+			if !errors.Is(err, c.expErr) {
+				t.Errorf("[%s] Expected: %+v, got: %+v", c.title, c.expErr, err)
+			}
+		} else {
+			verifyTokens()
+		}
+
+		if !c.userID.IsZero() {
+			tokens, err = a.UserTokens(ctx, c.userID)
+			if err != nil {
+				t.Errorf("[%s] Expected no error, got: %v", c.title, err)
+			} else {
+				verifyTokens()
+			}
+		}
 	}
 }
 
@@ -748,7 +765,7 @@ func TestGetUser(t *testing.T) {
 
 	cases := []struct {
 		title      string
-		savedUsers []interface{}
+		savedUsers []any
 		userID     primitive.ObjectID
 		expErr     bool
 		expUser    *User
@@ -759,7 +776,7 @@ func TestGetUser(t *testing.T) {
 		},
 		{
 			title: "unknown-user-ID-2",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
@@ -768,7 +785,7 @@ func TestGetUser(t *testing.T) {
 		},
 		{
 			title: "success",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
@@ -777,7 +794,7 @@ func TestGetUser(t *testing.T) {
 		},
 		{
 			title: "success-2",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
@@ -811,7 +828,7 @@ func TestSetUserEmails(t *testing.T) {
 
 	cases := []struct {
 		title         string
-		savedUsers    []interface{}
+		savedUsers    []any
 		userID        primitive.ObjectID
 		loweredEmails []string
 		expErr        bool
@@ -823,7 +840,7 @@ func TestSetUserEmails(t *testing.T) {
 		},
 		{
 			title: "unknown-user-ID-2",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID: uid2,
@@ -831,7 +848,7 @@ func TestSetUserEmails(t *testing.T) {
 		},
 		{
 			title: "error-existing-email",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
@@ -841,7 +858,7 @@ func TestSetUserEmails(t *testing.T) {
 		},
 		{
 			title: "success",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID:        uid1,
@@ -849,7 +866,7 @@ func TestSetUserEmails(t *testing.T) {
 		},
 		{
 			title: "success-2",
-			savedUsers: []interface{}{
+			savedUsers: []any{
 				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID:        uid1,
@@ -883,7 +900,7 @@ func TestSetUserEmails(t *testing.T) {
 // tokensDiffer compares to tokens "deeply", comparing timestamps using diffTime().
 func tokensDiffer(t1, t2 *Token) bool {
 	return t1.Email != t2.Email ||
-		t2.LoweredEmail != t2.LoweredEmail ||
+		t1.LoweredEmail != t2.LoweredEmail ||
 		timesDiffer(t1.Created, t2.Created) ||
 		t1.EntryCode != t2.EntryCode ||
 		clientsDiffer(t1.EntryClient, t2.EntryClient) ||

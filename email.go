@@ -12,7 +12,7 @@ type EmailParams struct {
 
 	// Data may hold custom data.
 	// Its value comes from Authenticator.SendEntryCode().
-	Data map[string]interface{}
+	Data map[string]any
 }
 
 // DefaultEmailTemplate is the default for Config.EmailTemplate.

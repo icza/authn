@@ -221,7 +221,7 @@ var ErrInvalidEmail = errors.New("invalid email")
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
 // default email template.
-func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]interface{}) (err error) {
+func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]any) (err error) {
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
 		return ErrInvalidEmail
@@ -525,18 +525,24 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 		return nil, ErrExpired
 	}
 
+	return a.UserTokens(ctx, token.UserID)
+}
+
+// UserTokens returns all valid tokens for the given user.
+// No error is reported if the given user does not exists (tokens will be empty of course).
+func (a *Authenticator) UserTokens(ctx context.Context, userID primitive.ObjectID) (tokens []*Token, err error) {
 	filter := bson.M{
-		"userID":   token.UserID,
+		"userID":   userID,
 		"exp":      bson.M{"$gt": time.Now()},
 		"verified": true,
 	}
 
 	curs, err := a.ct.Find(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list token: %w", err)
+		return nil, fmt.Errorf("failed to list tokens: %w", err)
 	}
 	if err = curs.All(ctx, &tokens); err != nil {
-		return nil, fmt.Errorf("failed to list token: %w", err)
+		return nil, fmt.Errorf("failed to list tokens: %w", err)
 	}
 
 	// All good:
