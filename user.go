@@ -18,4 +18,7 @@ type User struct {
 
 	// User creation timestamp.
 	Created time.Time `bson:"c"`
+
+	// Data may hold arbitrary data.
+	Data map[string]any `bson:"data,omitempty"`
 }
