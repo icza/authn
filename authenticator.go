@@ -85,7 +85,7 @@ type Config struct {
 
 // Authenticator is the implementation of a passwordless authenticator.
 // It's safe for concurrent use by multiple goroutines.
-type Authenticator struct {
+type Authenticator[UserData any] struct {
 	// mongoClient used for database operations.
 	mongoClient *mongo.Client
 
@@ -112,11 +112,11 @@ type EmailSenderFunc func(ctx context.Context, to, body string) error
 // NewAuthenticator creates a new Authenticator.
 // This function panics if mongoClient or sendEmail are nil, or if
 // Config.EmailTemplate is provided but is invalid.
-func NewAuthenticator(
+func NewAuthenticator[UserData any](
 	mongoClient *mongo.Client,
 	sendEmail EmailSenderFunc,
 	cfg Config,
-) *Authenticator {
+) *Authenticator[UserData] {
 
 	if mongoClient == nil {
 		panic("mongoClient must be provided")
@@ -152,7 +152,7 @@ func NewAuthenticator(
 
 	db := mongoClient.Database(cfg.AuthnDBName)
 
-	a := &Authenticator{
+	a := &Authenticator[UserData]{
 		mongoClient: mongoClient,
 		sendEmail:   sendEmail,
 		cfg:         cfg,
@@ -168,7 +168,7 @@ func NewAuthenticator(
 
 // initDB initializes the authn database. This includes:
 //   - ensure required indices exist
-func (a *Authenticator) initDB() {
+func (a *Authenticator[_]) initDB() {
 	_, err := a.ct.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
 		{
 			Keys: bson.D{
@@ -221,7 +221,7 @@ var ErrInvalidEmail = errors.New("invalid email")
 // data is set as EmailParams.Data, and will be available in the email template.
 // The default email template does not use it, so it may be nil if you use the
 // default email template.
-func (a *Authenticator) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]any) (err error) {
+func (a *Authenticator[_]) SendEntryCode(ctx context.Context, email string, client *Client, data map[string]any) (err error) {
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
 		return ErrInvalidEmail
@@ -328,13 +328,13 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // and updated, in the order they are provided, which may veto the decision.
 // If a validation error occurs, an error wrapping that is returned early.
 // If a user exists associated with the token's email at the time of the verification,
-// the user's ID is set as Token.UserID. If no such user exists, no user is created
+// Token.UserID is set to the existing user's ID. If no such user exists, no user is created
 // when calling the validators.
 //
 // If validation passes and no user exists associated with the token's email address,
-// a new user is created automatically, and its ID set as Token.UserID.
+// a new user is created automatically, and Token.UserID is set to this new user's ID.
 // Changes to the user's email later on will not affect Token.UserID.
-func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
+func (a *Authenticator[UserData]) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
 	if err = a.ct.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUnknown
@@ -349,7 +349,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 	}
 
 	// Lookup user (we do this so validators can use this information if they want to):
-	var user *User
+	var user *User[UserData]
 	if err = a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&user); err != nil {
 		if err != mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("failed to load user: %w", err)
@@ -367,7 +367,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 
 	if user == nil {
 		// Create new user:
-		user = &User{
+		user = &User[UserData]{
 			ID:            primitive.NewObjectID(),
 			LoweredEmails: []string{token.LoweredEmail},
 			Created:       time.Now(),
@@ -429,7 +429,7 @@ func (a *Authenticator) VerifyEntryCode(ctx context.Context, code string, client
 // If there are validators passed, they are called before the token is accepted
 // and updated, in the order they are provided, which may veto the decision.
 // If a validation error occurs, an error wrapping that is returned early.
-func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
+func (a *Authenticator[_]) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
 	filter := bson.M{"value": tokenValue}
 	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -479,7 +479,7 @@ func (a *Authenticator) VerifyToken(ctx context.Context, tokenValue string, clie
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired (or has already been invalidated), ErrExpired is returned.
-func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) (err error) {
+func (a *Authenticator[_]) InvalidateToken(ctx context.Context, tokenValue string) (err error) {
 	filter := bson.M{"value": tokenValue}
 	var token *Token
 	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
@@ -513,7 +513,7 @@ func (a *Authenticator) InvalidateToken(ctx context.Context, tokenValue string) 
 //
 // If the token value is unknown, ErrUnknown is returned.
 // If the token has expired (or has already been invalidated), ErrExpired is returned.
-func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens []*Token, err error) {
+func (a *Authenticator[_]) Tokens(ctx context.Context, tokenValue string) (tokens []*Token, err error) {
 	var token *Token
 	if err = a.ct.FindOne(ctx, bson.M{"value": tokenValue}).Decode(&token); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -530,7 +530,7 @@ func (a *Authenticator) Tokens(ctx context.Context, tokenValue string) (tokens [
 
 // UserTokens returns all valid tokens for the given user.
 // No error is reported if the given user does not exists (tokens will be empty of course).
-func (a *Authenticator) UserTokens(ctx context.Context, userID primitive.ObjectID) (tokens []*Token, err error) {
+func (a *Authenticator[_]) UserTokens(ctx context.Context, userID primitive.ObjectID) (tokens []*Token, err error) {
 	filter := bson.M{
 		"userID":   userID,
 		"exp":      bson.M{"$gt": time.Now()},
@@ -550,7 +550,7 @@ func (a *Authenticator) UserTokens(ctx context.Context, userID primitive.ObjectI
 }
 
 // GetUser returns the user document for the given ID.
-func (a *Authenticator) GetUser(ctx context.Context, userID primitive.ObjectID) (user *User, err error) {
+func (a *Authenticator[UserData]) GetUser(ctx context.Context, userID primitive.ObjectID) (user *User[UserData], err error) {
 	err = a.cu.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
 	return
 }
@@ -559,7 +559,7 @@ func (a *Authenticator) GetUser(ctx context.Context, userID primitive.ObjectID) 
 //
 // Emails must be unique across all users. Attempting to set an email that is
 // already associated to another user will result in an error.
-func (a *Authenticator) SetUserEmails(ctx context.Context, userID primitive.ObjectID, loweredEmails []string) (err error) {
+func (a *Authenticator[_]) SetUserEmails(ctx context.Context, userID primitive.ObjectID, loweredEmails []string) (err error) {
 	var updateResult *mongo.UpdateResult
 	updateResult, err = a.cu.UpdateByID(ctx,
 		userID,

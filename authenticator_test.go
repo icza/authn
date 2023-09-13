@@ -46,15 +46,15 @@ func TestNewAuthenticator(t *testing.T) {
 
 	func() {
 		defer expectPanic("nil mongoClient")
-		NewAuthenticator(nil, nil, Config{})
+		NewAuthenticator[any](nil, nil, Config{})
 	}()
 
 	func() {
 		defer expectPanic("nil sendEmail")
-		NewAuthenticator(client, nil, Config{})
+		NewAuthenticator[any](client, nil, Config{})
 	}()
 
-	a := NewAuthenticator(client, emptySendEmail, Config{})
+	a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 	defCfg := Config{
 		AuthnDBName:          DefaultAuthnDBName,
@@ -91,7 +91,7 @@ func TestNewAuthenticator(t *testing.T) {
 		EmailTemplate:        "etempl",
 	}
 
-	a = NewAuthenticator(client, emptySendEmail, cfg)
+	a = NewAuthenticator[any](client, emptySendEmail, cfg)
 	if a.cfg != cfg {
 		t.Errorf("Expected %#v, got: %#v", cfg, a.cfg)
 	}
@@ -202,7 +202,7 @@ func TestSendEntryCode(t *testing.T) {
 			}
 			return c.sendEmailErr
 		}
-		a := NewAuthenticator(client, sendEmail, c.cfg)
+		a := NewAuthenticator[any](client, sendEmail, c.cfg)
 
 		initCollection(ctx, a.ct, t)
 
@@ -254,7 +254,7 @@ func TestVerifyEntryCode(t *testing.T) {
 	cases := []struct {
 		title      string
 		savedToken *Token
-		savedUser  *User
+		savedUser  *User[any]
 		entryCode  string
 		client     *Client
 		validators []Validator
@@ -310,7 +310,7 @@ func TestVerifyEntryCode(t *testing.T) {
 				Expires:      time.Now().Add(time.Hour),
 				EntryClient:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
-			savedUser: &User{
+			savedUser: &User[any]{
 				ID:            uid,
 				LoweredEmails: []string{"as@as.hu"},
 				Created:       time.Now().Add(-time.Hour),
@@ -335,7 +335,7 @@ func TestVerifyEntryCode(t *testing.T) {
 				Expires:      time.Now().Add(time.Hour),
 				EntryClient:  &Client{UserAgent: "ua", IP: "1.2.3.4", At: time.Now().Add(-time.Minute)},
 			},
-			savedUser: &User{
+			savedUser: &User[any]{
 				ID:            uid,
 				LoweredEmails: []string{"as@as.hu"},
 				Created:       time.Now().Add(-time.Hour),
@@ -388,7 +388,7 @@ func TestVerifyEntryCode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		a := NewAuthenticator(client, emptySendEmail, Config{})
+		a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 		initCollection(ctx, a.ct, t, c.savedToken)
 		initCollection(ctx, a.cu, t, c.savedUser)
@@ -413,7 +413,7 @@ func TestVerifyEntryCode(t *testing.T) {
 			if token.UserID.IsZero() {
 				t.Errorf("[%s] Expected UserID, got nil", c.title)
 			}
-			var loadedUser *User
+			var loadedUser *User[any]
 			if err := a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&loadedUser); err != nil {
 				t.Errorf("[%s] Failed to load user: %v", c.title, err)
 			}
@@ -577,7 +577,7 @@ func TestVerifyToken(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		a := NewAuthenticator(client, emptySendEmail, Config{})
+		a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 		initCollection(ctx, a.ct, t, c.savedToken)
 
@@ -642,7 +642,7 @@ func TestInvalidateToken(t *testing.T) {
 
 	for _, c := range cases {
 		sendEmail := func(ctx context.Context, to, body string) error { return nil }
-		a := NewAuthenticator(client, sendEmail, Config{})
+		a := NewAuthenticator[any](client, sendEmail, Config{})
 
 		initCollection(ctx, a.ct, t, c.savedToken)
 
@@ -718,7 +718,7 @@ func TestTokens(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		a := NewAuthenticator(client, emptySendEmail, Config{})
+		a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 		initCollection(ctx, a.ct, t, c.savedTokens...)
 
@@ -768,7 +768,7 @@ func TestGetUser(t *testing.T) {
 		savedUsers []any
 		userID     primitive.ObjectID
 		expErr     bool
-		expUser    *User
+		expUser    *User[any]
 	}{
 		{
 			title:  "unknown-user-ID",
@@ -777,8 +777,8 @@ func TestGetUser(t *testing.T) {
 		{
 			title: "unknown-user-ID-2",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
-				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
 			userID: uid3,
 			expErr: true,
@@ -786,25 +786,25 @@ func TestGetUser(t *testing.T) {
 		{
 			title: "success",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
-				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
 			userID:  uid1,
-			expUser: &User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+			expUser: &User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 		},
 		{
 			title: "success-2",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
-				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
 			userID:  uid2,
-			expUser: &User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+			expUser: &User[any]{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 		},
 	}
 
 	for _, c := range cases {
-		a := NewAuthenticator(client, emptySendEmail, Config{})
+		a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 		initCollection(ctx, a.cu, t, c.savedUsers...)
 
@@ -816,6 +816,48 @@ func TestGetUser(t *testing.T) {
 		if err == nil {
 			if user.ID != c.expUser.ID {
 				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.expUser.ID, user.ID)
+			}
+		}
+	}
+}
+
+func TestGetUserCustomData(t *testing.T) {
+	ctx := context.Background()
+
+	type userData struct {
+		Role  string
+		Limit int
+	}
+
+	uid := primitive.ObjectID([12]byte{1})
+
+	cases := []struct {
+		title     string
+		savedUser *User[*userData]
+	}{
+		{
+			title:     "no-user-data",
+			savedUser: &User[*userData]{ID: uid, LoweredEmails: []string{"as@as.hu"}},
+		},
+		{
+			title:     "user-data",
+			savedUser: &User[*userData]{ID: uid, LoweredEmails: []string{"as@as.hu"}, Data: &userData{Role: "admin", Limit: 10}},
+		},
+	}
+
+	for _, c := range cases {
+		a := NewAuthenticator[*userData](client, emptySendEmail, Config{})
+
+		initCollection(ctx, a.cu, t, c.savedUser)
+
+		user, err := a.GetUser(ctx, c.savedUser.ID)
+		if err != nil {
+			t.Errorf("[%s] Expected no error,  got: %v", c.title, err)
+		}
+
+		if err == nil {
+			if !reflect.DeepEqual(c.savedUser.Data, user.Data) {
+				t.Errorf("[%s] Expected: %v, got: %v", c.title, c.savedUser.Data, user.Data)
 			}
 		}
 	}
@@ -841,7 +883,7 @@ func TestSetUserEmails(t *testing.T) {
 		{
 			title: "unknown-user-ID-2",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID: uid2,
 			expErr: true,
@@ -849,8 +891,8 @@ func TestSetUserEmails(t *testing.T) {
 		{
 			title: "error-existing-email",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
-				&User{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid2, LoweredEmails: []string{"bs@as.hu"}},
 			},
 			userID:        uid1,
 			loweredEmails: []string{"bs@as.hu"},
@@ -859,7 +901,7 @@ func TestSetUserEmails(t *testing.T) {
 		{
 			title: "success",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID:        uid1,
 			loweredEmails: []string{"bs@as.hu"},
@@ -867,7 +909,7 @@ func TestSetUserEmails(t *testing.T) {
 		{
 			title: "success-2",
 			savedUsers: []any{
-				&User{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
+				&User[any]{ID: uid1, LoweredEmails: []string{"as@as.hu"}},
 			},
 			userID:        uid1,
 			loweredEmails: []string{"bs@as.hu", "as@as.hu"},
@@ -875,7 +917,7 @@ func TestSetUserEmails(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		a := NewAuthenticator(client, emptySendEmail, Config{})
+		a := NewAuthenticator[any](client, emptySendEmail, Config{})
 
 		initCollection(ctx, a.cu, t, c.savedUsers...)
 
@@ -886,7 +928,7 @@ func TestSetUserEmails(t *testing.T) {
 
 		if err == nil {
 			// Verify
-			var loadedUser *User
+			var loadedUser *User[any]
 			if err := a.cu.FindOne(ctx, bson.M{"_id": c.userID}).Decode(&loadedUser); err != nil {
 				t.Errorf("[%s] Failed to load user: %v", c.title, err)
 			}

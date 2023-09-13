@@ -9,7 +9,7 @@ import (
 // User represents a user that owns tokens.
 // A user may have multiple emails, and emails may be changed later,
 // the User (identified by its ID) will remain the same.
-type User struct {
+type User[UserData any] struct {
 	// ID of the user.
 	ID primitive.ObjectID `bson:"_id"`
 
@@ -20,5 +20,5 @@ type User struct {
 	Created time.Time `bson:"c"`
 
 	// Data may hold arbitrary data.
-	Data map[string]any `bson:"data,omitempty"`
+	Data UserData `bson:"data,omitempty"`
 }
