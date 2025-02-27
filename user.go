@@ -3,7 +3,7 @@ package authn
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // User represents a user that owns tokens.
@@ -11,7 +11,7 @@ import (
 // the User (identified by its ID) will remain the same.
 type User[UserData any] struct {
 	// ID of the user.
-	ID primitive.ObjectID `bson:"_id"`
+	ID bson.ObjectID `bson:"_id"`
 
 	// Lowercased emails of the user.
 	LoweredEmails []string `bson:"lemails"`

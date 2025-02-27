@@ -13,10 +13,9 @@ import (
 	"text/template"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 const (
@@ -368,7 +367,7 @@ func (a *Authenticator[UserData]) VerifyEntryCode(ctx context.Context, code stri
 	if user == nil {
 		// Create new user:
 		user = &User[UserData]{
-			ID:            primitive.NewObjectID(),
+			ID:            bson.NewObjectID(),
 			LoweredEmails: []string{token.LoweredEmail},
 			Created:       time.Now(),
 		}
@@ -530,7 +529,7 @@ func (a *Authenticator[_]) Tokens(ctx context.Context, tokenValue string) (token
 
 // UserTokens returns all valid tokens for the given user.
 // No error is reported if the given user does not exists (tokens will be empty of course).
-func (a *Authenticator[_]) UserTokens(ctx context.Context, userID primitive.ObjectID) (tokens []*Token, err error) {
+func (a *Authenticator[_]) UserTokens(ctx context.Context, userID bson.ObjectID) (tokens []*Token, err error) {
 	filter := bson.M{
 		"userID":   userID,
 		"exp":      bson.M{"$gt": time.Now()},
@@ -550,7 +549,7 @@ func (a *Authenticator[_]) UserTokens(ctx context.Context, userID primitive.Obje
 }
 
 // GetUser returns the user document for the given ID.
-func (a *Authenticator[UserData]) GetUser(ctx context.Context, userID primitive.ObjectID) (user *User[UserData], err error) {
+func (a *Authenticator[UserData]) GetUser(ctx context.Context, userID bson.ObjectID) (user *User[UserData], err error) {
 	err = a.cu.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
 	return
 }
@@ -559,7 +558,7 @@ func (a *Authenticator[UserData]) GetUser(ctx context.Context, userID primitive.
 //
 // Emails must be unique across all users. Attempting to set an email that is
 // already associated to another user will result in an error.
-func (a *Authenticator[_]) SetUserEmails(ctx context.Context, userID primitive.ObjectID, loweredEmails []string) (err error) {
+func (a *Authenticator[_]) SetUserEmails(ctx context.Context, userID bson.ObjectID, loweredEmails []string) (err error) {
 	var updateResult *mongo.UpdateResult
 	updateResult, err = a.cu.UpdateByID(ctx,
 		userID,

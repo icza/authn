@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 var client *mongo.Client
@@ -21,7 +20,7 @@ func init() {
 	options := options.Client().ApplyURI("mongodb://localhost:27017")
 	ctx := context.Background()
 	var err error
-	client, err = mongo.Connect(ctx, options)
+	client, err = mongo.Connect(options)
 	if err != nil {
 		panic(err)
 	}
@@ -249,7 +248,7 @@ func TestSendEntryCode(t *testing.T) {
 func TestVerifyEntryCode(t *testing.T) {
 	ctx := context.Background()
 
-	uid := primitive.ObjectID([12]byte{1})
+	uid := bson.ObjectID([12]byte{1})
 
 	cases := []struct {
 		title      string
@@ -666,13 +665,13 @@ func TestInvalidateToken(t *testing.T) {
 func TestTokens(t *testing.T) {
 	ctx := context.Background()
 
-	uid1, uid2 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2})
+	uid1, uid2 := bson.ObjectID([12]byte{1}), bson.ObjectID([12]byte{2})
 
 	cases := []struct {
 		title          string
 		savedTokens    []any
 		tokenValue     string
-		userID         primitive.ObjectID
+		userID         bson.ObjectID
 		expErr         error
 		expTokenValues []string
 	}{
@@ -761,12 +760,12 @@ func TestTokens(t *testing.T) {
 func TestGetUser(t *testing.T) {
 	ctx := context.Background()
 
-	uid1, uid2, uid3 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2}), primitive.ObjectID([12]byte{3})
+	uid1, uid2, uid3 := bson.ObjectID([12]byte{1}), bson.ObjectID([12]byte{2}), bson.ObjectID([12]byte{3})
 
 	cases := []struct {
 		title      string
 		savedUsers []any
-		userID     primitive.ObjectID
+		userID     bson.ObjectID
 		expErr     bool
 		expUser    *User[any]
 	}{
@@ -829,7 +828,7 @@ func TestGetUserCustomData(t *testing.T) {
 		Limit int
 	}
 
-	uid := primitive.ObjectID([12]byte{1})
+	uid := bson.ObjectID([12]byte{1})
 
 	cases := []struct {
 		title     string
@@ -866,12 +865,12 @@ func TestGetUserCustomData(t *testing.T) {
 func TestSetUserEmails(t *testing.T) {
 	ctx := context.Background()
 
-	uid1, uid2 := primitive.ObjectID([12]byte{1}), primitive.ObjectID([12]byte{2})
+	uid1, uid2 := bson.ObjectID([12]byte{1}), bson.ObjectID([12]byte{2})
 
 	cases := []struct {
 		title         string
 		savedUsers    []any
-		userID        primitive.ObjectID
+		userID        bson.ObjectID
 		loweredEmails []string
 		expErr        bool
 	}{
