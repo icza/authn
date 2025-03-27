@@ -335,7 +335,7 @@ type Validator func(ctx context.Context, token *Token, client *Client) error
 // Changes to the user's email later on will not affect Token.UserID.
 func (a *Authenticator[UserData]) VerifyEntryCode(ctx context.Context, code string, client *Client, validators ...Validator) (token *Token, err error) {
 	if err = a.ct.FindOne(ctx, bson.M{"ecode": code}).Decode(&token); err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrUnknown
 		}
 		return nil, fmt.Errorf("failed to load token: %w", err)
@@ -350,7 +350,7 @@ func (a *Authenticator[UserData]) VerifyEntryCode(ctx context.Context, code stri
 	// Lookup user (we do this so validators can use this information if they want to):
 	var user *User[UserData]
 	if err = a.cu.FindOne(ctx, bson.M{"lemails": token.LoweredEmail}).Decode(&user); err != nil {
-		if err != mongo.ErrNoDocuments {
+		if !errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, fmt.Errorf("failed to load user: %w", err)
 		}
 	}
@@ -431,7 +431,7 @@ func (a *Authenticator[UserData]) VerifyEntryCode(ctx context.Context, code stri
 func (a *Authenticator[_]) VerifyToken(ctx context.Context, tokenValue string, client *Client, validators ...Validator) (token *Token, err error) {
 	filter := bson.M{"value": tokenValue}
 	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrUnknown
 		}
 		return nil, fmt.Errorf("failed to load token: %w", err)
@@ -482,7 +482,7 @@ func (a *Authenticator[_]) InvalidateToken(ctx context.Context, tokenValue strin
 	filter := bson.M{"value": tokenValue}
 	var token *Token
 	if err = a.ct.FindOne(ctx, filter).Decode(&token); err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return ErrUnknown
 		}
 		return fmt.Errorf("failed to load token: %w", err)
@@ -515,7 +515,7 @@ func (a *Authenticator[_]) InvalidateToken(ctx context.Context, tokenValue strin
 func (a *Authenticator[_]) Tokens(ctx context.Context, tokenValue string) (tokens []*Token, err error) {
 	var token *Token
 	if err = a.ct.FindOne(ctx, bson.M{"value": tokenValue}).Decode(&token); err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrUnknown
 		}
 		return nil, fmt.Errorf("failed to load token: %w", err)
