@@ -1,6 +1,7 @@
 package authn
 
 import (
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -66,4 +67,14 @@ type Token struct {
 // Expired tells if this token has expired.
 func (t *Token) Expired() bool {
 	return time.Now().After(t.Expires)
+}
+
+// EmailDomain returns the email domain of the email.
+// If the email is invalid and doesn't contain "@", the whole email is returned.
+func (t *Token) EmailDomain() string {
+	if parts := strings.Split(t.LoweredEmail, "@"); len(parts) > 1 {
+		return parts[1]
+	}
+
+	return t.LoweredEmail
 }
